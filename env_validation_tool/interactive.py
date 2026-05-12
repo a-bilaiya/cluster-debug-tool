@@ -318,17 +318,20 @@ def _check_vm_info(session):
                           f"{n.get('mac','?'):<20} "
                           f"{_c(conn_color, 'Yes' if n.get('connected') else 'No')}")
 
-                # Storage Controllers (SCSI / SATA / NVMe / AHCI) with attached disks.
+                # Storage / Bus Controllers (SCSI / SATA / NVMe / USB) with attached devices.
                 # Filter by class name keywords — pyVmomi types include things like
                 # VirtualLsiLogicController, ParaVirtualSCSIController,
-                # VirtualLsiLogicSASController, VirtualAHCIController, etc.
+                # VirtualLsiLogicSASController, VirtualAHCIController,
+                # VirtualNVMEController, VirtualUSBController, VirtualUSBXHCIController, etc.
                 ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual",
-                                  "SCSI", "AHCI", "SATA", "NVMe", "NVME")
+                                  "SCSI", "AHCI", "SATA", "NVMe", "NVME",
+                                  "USB", "USBXHCI", "USBEHCI")
                 storage_ctrls = [c for c in controllers
                                  if any(k in c.get("type", "") for k in ctype_keywords)
                                  or "scsi" in c.get("label", "").lower()
                                  or "sata" in c.get("label", "").lower()
-                                 or "nvme" in c.get("label", "").lower()]
+                                 or "nvme" in c.get("label", "").lower()
+                                 or "usb"  in c.get("label", "").lower()]
                 if storage_ctrls:
                     print()
                     print(f"    {_c(_BOLD, 'Storage Controllers')}  ({len(storage_ctrls)})")
@@ -338,12 +341,15 @@ def _check_vm_info(session):
                         sharing  = c.get("sharing", "noSharing")
                         hot_add  = c.get("hot_add_remove", None)
                         ctrl_key = c.get("key")
-                        # PVSCSI / NVMe = green (preferred), LSI / BusLogic = yellow
+                        # Color by performance: PVSCSI/NVMe green (preferred),
+                        # LSI/BusLogic yellow (legacy), SATA/AHCI cyan, USB magenta
                         if "ParaVirtual" in ctype or "NVMe" in ctype or "NVME" in ctype:
                             color = _GREEN
                         elif "LsiLogic" in ctype or "BusLogic" in ctype:
                             color = _YELLOW
-                        else:
+                        elif "USB" in ctype:
+                            color = _BLUE
+                        else:  # SATA / AHCI / unknown
                             color = _CYAN
 
                         print()
