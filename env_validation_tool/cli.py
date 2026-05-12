@@ -728,6 +728,17 @@ def main(argv=None):
         else:
             print("\n  [INFO] No --ssh-key provided -- skipping iperf tests.")
 
+    # ── Auto-derive PDF/Excel paths from JSON base when -o is passed on CLI
+    # but --output-pdf / --output-xlsx were not explicitly given on CLI ──
+    cli_has_pdf  = any(a in raw_argv for a in ("--output-pdf",))
+    cli_has_xlsx = any(a in raw_argv for a in ("--output-xlsx",))
+    if args.output and not args.output.startswith("/dev/"):
+        base = args.output[:-5] if args.output.endswith(".json") else args.output
+        if not cli_has_pdf:
+            args.output_pdf = base + ".pdf"
+        if not cli_has_xlsx:
+            args.output_xlsx = base + ".xlsx"
+
     # ── Output ──
     if args.output:
         with open(args.output, "w") as f:
