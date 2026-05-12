@@ -203,7 +203,7 @@ def build_parser():
 
 _SUBCOMMANDS = {
     "interactive", "alarms", "tasks", "reservations",
-    "hardware", "capacity", "validate", "report", "help",
+    "hardware", "capacity", "validate", "vminfo", "report", "help",
 }
 
 _USAGE_TEXT = """\
@@ -217,6 +217,7 @@ SUBCOMMANDS (quick one-shot checks):
   python -m env_validation_tool hardware      -c config.yaml
   python -m env_validation_tool capacity      -c config.yaml
   python -m env_validation_tool validate      -c config.yaml
+  python -m env_validation_tool vminfo        -c config.yaml
   python -m env_validation_tool report        -c config.yaml [--output-base /tool/out/report]
   python -m env_validation_tool interactive   -c config.yaml
 
@@ -313,7 +314,7 @@ def _run_subcommand(subcommand, argv):
     from .interactive import (
         _check_alarms, _check_tasks, _check_reservations,
         _check_hardware, _check_capacity, _check_vm_validation,
-        _full_troubleshoot,
+        _check_vm_info, _full_troubleshoot,
     )
 
     sub_args = _subcommand_parse_args(argv)
@@ -344,6 +345,8 @@ def _run_subcommand(subcommand, argv):
             _check_capacity(session)
         elif subcommand == "validate":
             _check_vm_validation(session)
+        elif subcommand == "vminfo":
+            _check_vm_info(session)
         elif subcommand == "report":
             # Inject the output base into the session so _full_troubleshoot can pick it up
             session["_output_base"] = sub_args.output_base
