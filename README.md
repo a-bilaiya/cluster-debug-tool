@@ -17,8 +17,8 @@ A Python-based diagnostic and validation tool for **Rubrik Virtual Cluster (RVC)
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/a-bilaiya/rvc-cluster-debug-tool.git
-cd rvc-cluster-debug-tool
+git clone https://github.com/a-bilaiya/cluster-debug-tool.git
+cd cluster-debug-tool
 ```
 
 ### 2. Run the setup script
@@ -203,6 +203,81 @@ All reports are saved to `/tool/out/` by default.
 
 ---
 
+## Standalone Executables (No Python Required)
+
+Pre-built executables for Linux, macOS, and Windows are on the
+[Releases page](https://github.com/a-bilaiya/cluster-debug-tool/releases).
+
+```bash
+# Linux x86_64
+chmod +x rvc-cluster-debug-tool-*-linux-x86_64
+./rvc-cluster-debug-tool-*-linux-x86_64 interactive
+
+# macOS (Intel or Apple Silicon)
+chmod +x rvc-cluster-debug-tool-*-macos-*
+./rvc-cluster-debug-tool-*-macos-* interactive
+```
+
+```powershell
+# Windows PowerShell
+.\rvc-cluster-debug-tool-*-windows-x86_64.exe interactive
+```
+
+These bundle Python and all dependencies into a single ~26 MB file —
+customers don't need to install Python or pip.
+
+### Building executables locally
+
+Each release contains **two binaries per platform**:
+
+| Binary | Purpose |
+|--------|---------|
+| `rvc-cluster-debug-tool` | Full diagnostic tool — interactive menu + all subcommands |
+| `vminfo-report` | Quick standalone VM info → ZIP for support tickets |
+
+To build on your own machine, use the script that matches your OS:
+
+| OS | Build both | Build one only |
+|----|------------|----------------|
+| Linux  | `bash build.sh`     | `bash build.sh --target main` <br/> `bash build.sh --target vminfo` |
+| macOS  | `bash build.sh`     | `bash build.sh --target main` <br/> `bash build.sh --target vminfo` |
+| Windows | `.\build.ps1`      | `.\build.ps1 -Target main` <br/> `.\build.ps1 -Target vminfo` |
+
+Common options (work for both scripts):
+
+| Option | Behavior |
+|--------|----------|
+| `--onefile` (default) | Single executable, ~26 MB, ~2s startup |
+| `--onedir`            | Folder with executable + libs, instant startup |
+| `--clean`             | Delete `dist/` `build/` `dist-release/` first |
+
+Output appears in `dist-release/`. The build uses **PyInstaller** and takes
+~1 minute. PyInstaller **cannot cross-compile** — build on each target OS.
+
+### Cutting a release (maintainers)
+
+Tag a version and push — GitHub Actions builds for all 4 platforms in parallel
+and publishes a GitHub Release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Builds produced:
+
+| Platform | Runner | Output |
+|----------|--------|--------|
+| Linux x86_64        | `ubuntu-latest` | `*-linux-x86_64` |
+| macOS Intel         | `macos-13`      | `*-macos-x86_64` |
+| macOS Apple Silicon | `macos-14`      | `*-macos-arm64`  |
+| Windows x86_64      | `windows-latest`| `*-windows-x86_64.exe` |
+
+The workflow at `.github/workflows/release.yml` generates SHA256 checksums
+and attaches all binaries to the GitHub Release.
+
+---
+
 ## Sharing Reports with Rubrik Support
 
 When contacting Rubrik Support about cluster issues, run the full report and attach:
@@ -256,7 +331,7 @@ All subcommands and the full troubleshoot run work directly against ESXi hosts (
 ## Project Structure
 
 ```
-rvc-cluster-debug-tool/
+cluster-debug-tool/
   setup.py                          # package definition
   requirements.txt                  # pip dependencies
   README.md

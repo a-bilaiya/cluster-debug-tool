@@ -21,6 +21,13 @@ env_validation_tool/config_*.yaml
 env_validation_tool/out/
 /tool/
 
+# PyInstaller build artifacts
+build/
+dist/
+dist-release/
+*.spec
+run_tool.py.bak
+
 # IDE
 .vscode/
 .idea/

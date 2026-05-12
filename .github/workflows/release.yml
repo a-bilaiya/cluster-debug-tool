@@ -1,0 +1,149 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86_64
+            shell: bash
+            build_cmd: bash build.sh
+          - os: macos-13      # Intel macOS
+            label: macos-x86_64
+            shell: bash
+            build_cmd: bash build.sh
+          - os: macos-14      # Apple Silicon
+            label: macos-arm64
+            shell: bash
+            build_cmd: bash build.sh
+          - os: windows-latest
+            label: windows-x86_64
+            shell: pwsh
+            build_cmd: .\build.ps1
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          python -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+          ./.venv/bin/pip install -e .
+          ./.venv/bin/pip install pyinstaller
+
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\pip.exe install -r requirements.txt
+          .\.venv\Scripts\pip.exe install -e .
+          .\.venv\Scripts\pip.exe install pyinstaller
+
+      - name: Build executable
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload artifacts (main tool + vminfo-report)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-debug-tools-${{ matrix.label }}
+          path: dist-release/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          ls -lh release-files/
+
+      - name: Generate checksums
+        run: |
+          cd release-files
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-files/*
+          generate_release_notes: true
+          body: |
+            ## RVC Cluster Debug Tool ${{ github.ref_name }}
+
+            Standalone executables for Linux, macOS, and Windows — no Python install required.
+
+            **Two binaries are published per platform:**
+            - **`rvc-cluster-debug-tool`** — the full diagnostic tool (interactive menu + all subcommands)
+            - **`vminfo-report`** — quick standalone VM hardware info → single ZIP file ready to share
+
+            ### Downloads
+
+            | Platform | Main Tool | VM Info Report |
+            |----------|-----------|----------------|
+            | Linux x86_64        | `rvc-cluster-debug-tool-*-linux-x86_64`       | `vminfo-report-*-linux-x86_64`       |
+            | macOS Intel         | `rvc-cluster-debug-tool-*-macos-x86_64`       | `vminfo-report-*-macos-x86_64`       |
+            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64`        | `vminfo-report-*-macos-arm64`        |
+            | Windows x86_64      | `rvc-cluster-debug-tool-*-windows-x86_64.exe` | `vminfo-report-*-windows-x86_64.exe` |
+
+            ### Usage (Linux / macOS)
+
+            ```bash
+            # Full diagnostic tool
+            chmod +x rvc-cluster-debug-tool-*
+            ./rvc-cluster-debug-tool-* interactive
+
+            # Quick VM info ZIP for support tickets
+            chmod +x vminfo-report-*
+            ./vminfo-report-* -c config.yaml
+            ```
+
+            ### Usage (Windows PowerShell)
+
+            ```powershell
+            .\rvc-cluster-debug-tool-*-windows-x86_64.exe interactive
+            .\vminfo-report-*-windows-x86_64.exe -c config.yaml
+            ```
+
+            See `SHA256SUMS.txt` for file integrity verification.
