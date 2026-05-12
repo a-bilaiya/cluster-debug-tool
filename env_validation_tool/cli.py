@@ -198,6 +198,11 @@ def build_parser():
                      help="Base path for report subcommand outputs "
                           "(default: /tool/out/report)")
 
+    parser.add_argument("--version", action="store_true",
+                        help="Show tool version and exit")
+    parser.add_argument("--customer", metavar="NAME",
+                        help="Customer or cluster name — embedded in report headers")
+
     return parser
 
 
@@ -246,6 +251,7 @@ def _subcommand_parse_args(argv):
     p.add_argument("-c", "--config", default="config.yaml")
     p.add_argument("--host", default=None)
     p.add_argument("--output-base", default="/tool/out/report")
+    p.add_argument("--customer", default="")
     known, _ = p.parse_known_args(argv)
     return known
 
@@ -355,6 +361,7 @@ def _run_subcommand(subcommand, argv):
         return 0
 
     session = _build_subcommand_session(cfg, host_override=sub_args.host)
+    session["customer_name"] = cfg.get("customer", "") or sub_args.customer or ""
 
     try:
         if subcommand == "alarms":
@@ -425,15 +432,14 @@ def _run_report_subcommand(session, base_path):
                   f"alarms={alarms.get('total_count', 0)}")
             reports.append(host_report)
         except Exception as e:
-            import traceback
-            print(f"  ERROR on {ip}: {e}")
-            traceback.print_exc()
+            print(f"  [ERROR] {e}")
 
     if not reports:
         print("[ERROR] No data collected.")
         return
 
     result = {"hosts": reports, "cluster_name": "Subcommand", "vcenter_ip": "?"}
+    result["customer_name"] = session.get("customer_name", "")
 
     out_dir = os.path.dirname(out_json)
     if out_dir:
@@ -466,6 +472,11 @@ def _run_report_subcommand(session, base_path):
 def main(argv=None):
     """Main entry point."""
     raw_argv = argv if argv is not None else sys.argv[1:]
+
+    if "--version" in raw_argv or "-V" in raw_argv:
+        from . import __version__
+        print(f"RVC Cluster Debug Tool v{__version__}")
+        return 0
 
     # ── Subcommand pre-check ──
     first = raw_argv[0] if raw_argv else None
@@ -529,6 +540,7 @@ def main(argv=None):
         "collection_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "hosts": [],
         "network_performance": [],
+        "customer_name": getattr(args, "customer", "") or cfg.get("customer", ""),
     }
 
     # ── Phase 0: Discover ESXi IPs ──

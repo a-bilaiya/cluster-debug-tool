@@ -9,4 +9,4 @@ Usage as library:
     from env_validation_tool.validator import validate_requirements
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

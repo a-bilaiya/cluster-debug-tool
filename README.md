@@ -203,6 +203,31 @@ All reports are saved to `/tool/out/` by default.
 
 ---
 
+## Sharing Reports with Rubrik Support
+
+When contacting Rubrik Support about cluster issues, run the full report and attach:
+
+| File | Contents |
+|------|----------|
+| `report.xlsx` | Excel workbook — easiest to read, share this first |
+| `report.json` | Full raw data — engineers use this for deep analysis |
+| `report.pdf` | Printable summary |
+
+In your support case, also include:
+- Rubrik cluster serial number
+- Rubrik software version
+- Description of symptoms
+
+### Quick report generation
+
+```bash
+python -m env_validation_tool report -c config.yaml
+```
+
+Reports are saved to `/tool/out/` by default.
+
+---
+
 ## RVCLS Spec Validation
 
 The tool validates each RVC VM against the RVCLS qualification spec:
@@ -250,3 +275,17 @@ rvc-cluster-debug-tool/
     discovery/
       esxi.py                       # pyVmomi ESXi/vCenter discovery
 ```
+
+---
+
+## Glossary
+
+| Term | Meaning |
+|------|---------|
+| RVC | Rubrik Virtual Cluster — Rubrik CDM running as VMs on customer VMware infrastructure |
+| RVCLS | RVC Lifecycle Specification — hardware and configuration requirements for RVC nodes |
+| ESXi | VMware's hypervisor that runs the RVC virtual machines |
+| vCenter | VMware vCenter Server — central management for ESXi hosts |
+| pyVmomi | VMware's Python SDK used to connect to ESXi/vCenter |
+| PVSCSI | VMware Paravirtual SCSI controller — recommended for best disk performance in RVC VMs |
+| eagerzeroedthick | VMware disk provisioning type required for RVC VM OS disks |

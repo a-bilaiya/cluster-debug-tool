@@ -662,6 +662,7 @@ def _full_troubleshoot(session):
         return
 
     result = {"hosts": reports, "cluster_name": "Interactive", "vcenter_ip": "?"}
+    result["customer_name"] = session.get("customer_name", "")
 
     # Ensure output directory exists
     out_dir = os.path.dirname(out_json)
