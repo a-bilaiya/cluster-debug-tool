@@ -487,7 +487,7 @@ def main(argv=None):
     if getattr(args, "interactive", False):
         from .interactive import run_interactive
         run_interactive()
-        return
+        return 0
 
     # Load config file and merge
     cfg = _load_config(args.config)

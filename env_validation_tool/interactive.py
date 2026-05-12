@@ -376,8 +376,8 @@ def _check_reservations(session):
             host_total_mhz = hw.cpuMhz * hw.numCpuCores
             host_mem_mb = round(hw.memorySize / (1024**2))
 
-            cpu_data = _ts_cpu_allocation(h["si"], h["host"])
-            mem_data = _ts_memory_allocation(h["si"], h["host"])
+            cpu_data = _ts_cpu_allocation(h["host"])
+            mem_data = _ts_memory_allocation(h["host"])
 
             cpu_host = cpu_data.get("host_summary", {})
             mem_host = mem_data.get("host_summary", {})
@@ -534,8 +534,8 @@ def _check_vm_validation(session):
         _section(f"Host {ip}")
         try:
             vm_details = _ts_vm_details(h["host"])
-            cpu_data = _ts_cpu_allocation(h["si"], h["host"])
-            mem_data = _ts_memory_allocation(h["si"], h["host"])
+            cpu_data = _ts_cpu_allocation(h["host"])
+            mem_data = _ts_memory_allocation(h["host"])
 
             per_vm_cpu = {v["vm_name"]: v for v in cpu_data.get("per_vm", [])}
             per_vm_mem = {v["vm_name"]: v for v in mem_data.get("per_vm", [])}
@@ -577,7 +577,7 @@ def _check_capacity(session):
         h = session["hosts"][ip]
         _section(f"Host {ip}")
         try:
-            data = _ts_capacity_usage(h["si"], h["host"])
+            data = _ts_capacity_usage(h["host"])
             print(f"  {'Datastore':<30} {'Free':>12} {'Total':>12} {'Used %':>8}")
             print("  " + "─" * 70)
             for ds in data.get("datastores", []):
