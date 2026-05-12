@@ -25,11 +25,7 @@ jobs:
             label: linux-x86_64
             shell: bash
             build_cmd: bash build.sh
-          - os: macos-13      # Intel macOS
-            label: macos-x86_64
-            shell: bash
-            build_cmd: bash build.sh
-          - os: macos-14      # Apple Silicon
+          - os: macos-14      # Apple Silicon (covers all modern Macs M1+)
             label: macos-arm64
             shell: bash
             build_cmd: bash build.sh
@@ -123,8 +119,7 @@ jobs:
             | Platform | Main Tool | VM Info Report |
             |----------|-----------|----------------|
             | Linux x86_64        | `rvc-cluster-debug-tool-*-linux-x86_64`       | `vminfo-report-*-linux-x86_64`       |
-            | macOS Intel         | `rvc-cluster-debug-tool-*-macos-x86_64`       | `vminfo-report-*-macos-x86_64`       |
-            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64`        | `vminfo-report-*-macos-arm64`        |
+            | macOS (Apple Silicon — M1/M2/M3/M4) | `rvc-cluster-debug-tool-*-macos-arm64` | `vminfo-report-*-macos-arm64` |
             | Windows x86_64      | `rvc-cluster-debug-tool-*-windows-x86_64.exe` | `vminfo-report-*-windows-x86_64.exe` |
 
             ### Usage (Linux / macOS)

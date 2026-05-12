@@ -269,9 +269,10 @@ Builds produced:
 | Platform | Runner | Output |
 |----------|--------|--------|
 | Linux x86_64        | `ubuntu-latest` | `*-linux-x86_64` |
-| macOS Intel         | `macos-13`      | `*-macos-x86_64` |
 | macOS Apple Silicon | `macos-14`      | `*-macos-arm64`  |
 | Windows x86_64      | `windows-latest`| `*-windows-x86_64.exe` |
+
+> **Note:** Intel macOS (macos-13) is no longer in the matrix — GitHub Actions Intel macOS runners are scarce and most Macs since 2020 are Apple Silicon. If you need an Intel macOS binary, build it manually on an Intel Mac with `bash build.sh`.
 
 The workflow at `.github/workflows/release.yml` generates SHA256 checksums
 and attaches all binaries to the GitHub Release.
