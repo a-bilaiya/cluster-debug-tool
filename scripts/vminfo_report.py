@@ -569,5 +569,34 @@ def main():
     print("  Share this ZIP file with Rubrik Support.")
 
 
+def _should_pause(argv):
+    """Pause before exit when running as a frozen exe on Windows."""
+    if "--no-pause" in argv:
+        return False
+    if not sys.platform.startswith("win"):
+        return False
+    return getattr(sys, "frozen", False)
+
+
 if __name__ == "__main__":
-    main()
+    import traceback as _tb
+    _pause = _should_pause(sys.argv)
+    sys.argv = [a for a in sys.argv if a != "--no-pause"]
+    _exit_code = 0
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[interrupted]")
+        _exit_code = 130
+    except SystemExit as _e:
+        _exit_code = _e.code if isinstance(_e.code, int) else (1 if _e.code else 0)
+    except Exception:
+        print("\n[ERROR] An unexpected error occurred:\n")
+        _tb.print_exc()
+        _exit_code = 1
+    if _pause:
+        try:
+            input("\n[ Press Enter to close this window ] ")
+        except Exception:
+            pass
+    sys.exit(_exit_code)
