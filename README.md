@@ -277,15 +277,3 @@ rvc-cluster-debug-tool/
 ```
 
 ---
-
-## Glossary
-
-| Term | Meaning |
-|------|---------|
-| RVC | Rubrik Virtual Cluster — Rubrik CDM running as VMs on customer VMware infrastructure |
-| RVCLS | RVC Lifecycle Specification — hardware and configuration requirements for RVC nodes |
-| ESXi | VMware's hypervisor that runs the RVC virtual machines |
-| vCenter | VMware vCenter Server — central management for ESXi hosts |
-| pyVmomi | VMware's Python SDK used to connect to ESXi/vCenter |
-| PVSCSI | VMware Paravirtual SCSI controller — recommended for best disk performance in RVC VMs |
-| eagerzeroedthick | VMware disk provisioning type required for RVC VM OS disks |
