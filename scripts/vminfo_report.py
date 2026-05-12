@@ -543,10 +543,10 @@ def main():
     zip_path  = base + ".zip"
 
     print()
-    print(f"  Writing reports to: {out_dir}")
-    _write_json(data, json_path);   print(f"    JSON  : {os.path.basename(json_path)}")
-    _write_excel(data, xlsx_path);  print(f"    Excel : {os.path.basename(xlsx_path)}")
-    _write_pdf(data, pdf_path);     print(f"    PDF   : {os.path.basename(pdf_path)}")
+    print(f"  Generating report bundle (JSON + Excel + PDF)...")
+    _write_json(data, json_path)
+    _write_excel(data, xlsx_path)
+    _write_pdf(data, pdf_path)
 
     # Bundle into a single ZIP
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
