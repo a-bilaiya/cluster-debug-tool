@@ -554,6 +554,13 @@ def main():
         zf.write(pdf_path,  os.path.basename(pdf_path))
         zf.write(xlsx_path, os.path.basename(xlsx_path))
 
+    # Remove the loose files now that they are inside the ZIP
+    for p in (json_path, pdf_path, xlsx_path):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
     size_mb = os.path.getsize(zip_path) / (1024 * 1024)
     print()
     print(f"  >>> ZIP bundle ready: {zip_path}")
