@@ -71,10 +71,10 @@ jobs:
       - name: Build executable
         run: ${{ matrix.build_cmd }}
 
-      - name: Upload artifact
+      - name: Upload artifacts (main tool + vminfo-report)
         uses: actions/upload-artifact@v4
         with:
-          name: rvc-cluster-debug-tool-${{ matrix.label }}
+          name: cluster-debug-tools-${{ matrix.label }}
           path: dist-release/*
           if-no-files-found: error
 
@@ -114,30 +114,36 @@ jobs:
 
             Standalone executables for Linux, macOS, and Windows — no Python install required.
 
-            ### Download
+            **Two binaries are published per platform:**
+            - **`rvc-cluster-debug-tool`** — the full diagnostic tool (interactive menu + all subcommands)
+            - **`vminfo-report`** — quick standalone VM hardware info → single ZIP file ready to share
 
-            | Platform | File |
-            |----------|------|
-            | Linux x86_64        | `rvc-cluster-debug-tool-*-linux-x86_64`   |
-            | macOS Intel         | `rvc-cluster-debug-tool-*-macos-x86_64`   |
-            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64`    |
-            | Windows x86_64      | `rvc-cluster-debug-tool-*-windows-x86_64.exe` |
+            ### Downloads
+
+            | Platform | Main Tool | VM Info Report |
+            |----------|-----------|----------------|
+            | Linux x86_64        | `rvc-cluster-debug-tool-*-linux-x86_64`       | `vminfo-report-*-linux-x86_64`       |
+            | macOS Intel         | `rvc-cluster-debug-tool-*-macos-x86_64`       | `vminfo-report-*-macos-x86_64`       |
+            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64`        | `vminfo-report-*-macos-arm64`        |
+            | Windows x86_64      | `rvc-cluster-debug-tool-*-windows-x86_64.exe` | `vminfo-report-*-windows-x86_64.exe` |
 
             ### Usage (Linux / macOS)
 
             ```bash
+            # Full diagnostic tool
             chmod +x rvc-cluster-debug-tool-*
-            ./rvc-cluster-debug-tool-* --version
             ./rvc-cluster-debug-tool-* interactive
-            ./rvc-cluster-debug-tool-* report -c config.yaml
+
+            # Quick VM info ZIP for support tickets
+            chmod +x vminfo-report-*
+            ./vminfo-report-* -c config.yaml
             ```
 
             ### Usage (Windows PowerShell)
 
             ```powershell
-            .\rvc-cluster-debug-tool-*-windows-x86_64.exe --version
             .\rvc-cluster-debug-tool-*-windows-x86_64.exe interactive
-            .\rvc-cluster-debug-tool-*-windows-x86_64.exe report -c config.yaml
+            .\vminfo-report-*-windows-x86_64.exe -c config.yaml
             ```
 
             See `SHA256SUMS.txt` for file integrity verification.

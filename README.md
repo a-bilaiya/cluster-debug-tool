@@ -228,13 +228,20 @@ customers don't need to install Python or pip.
 
 ### Building executables locally
 
+Each release contains **two binaries per platform**:
+
+| Binary | Purpose |
+|--------|---------|
+| `rvc-cluster-debug-tool` | Full diagnostic tool — interactive menu + all subcommands |
+| `vminfo-report` | Quick standalone VM info → ZIP for support tickets |
+
 To build on your own machine, use the script that matches your OS:
 
-| OS | Command |
-|----|---------|
-| Linux  | `bash build.sh`              |
-| macOS  | `bash build.sh`              |
-| Windows | `.\build.ps1`               |
+| OS | Build both | Build one only |
+|----|------------|----------------|
+| Linux  | `bash build.sh`     | `bash build.sh --target main` <br/> `bash build.sh --target vminfo` |
+| macOS  | `bash build.sh`     | `bash build.sh --target main` <br/> `bash build.sh --target vminfo` |
+| Windows | `.\build.ps1`      | `.\build.ps1 -Target main` <br/> `.\build.ps1 -Target vminfo` |
 
 Common options (work for both scripts):
 

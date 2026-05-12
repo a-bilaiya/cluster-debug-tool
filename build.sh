@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# RVC Cluster Debug Tool — Build standalone executable
+# RVC Cluster Debug Tool — Build standalone executables
 #
-# Builds a single-file executable using PyInstaller for the current platform
-# (Linux or macOS). Output goes to dist-release/.
+# Builds one or both single-file executables using PyInstaller for the current
+# platform (Linux or macOS). Output goes to dist-release/.
 #
 # Usage:
-#   bash build.sh                 # build for current platform
-#   bash build.sh --onedir        # build as folder (faster startup)
-#   bash build.sh --clean         # remove old build artifacts first
+#   bash build.sh                   # build both binaries (main + vminfo)
+#   bash build.sh --target main     # build only the main tool
+#   bash build.sh --target vminfo   # build only the vminfo report tool
+#   bash build.sh --onedir          # folder distribution (faster startup)
+#   bash build.sh --clean           # remove old build artifacts first
+#
+# Outputs in dist-release/:
+#   rvc-cluster-debug-tool-<version>-<os>-<arch>     (main tool)
+#   vminfo-report-<version>-<os>-<arch>              (standalone vminfo)
 
 set -euo pipefail
 
@@ -15,21 +21,34 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${PROJECT_ROOT}/.venv"
 BUILD_MODE="--onefile"
 CLEAN_FIRST=0
+TARGET="all"
 
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --onefile)  BUILD_MODE="--onefile"  ;;
         --onedir)   BUILD_MODE="--onedir"   ;;
         --clean)    CLEAN_FIRST=1           ;;
+        --target)   shift; TARGET="$1"      ;;
+        --target=*) TARGET="${1#*=}"        ;;
         -h|--help)
-            echo "Usage: bash build.sh [--onefile|--onedir] [--clean]"
-            echo "  --onefile  Single executable (default, slower startup ~2s)"
-            echo "  --onedir   Folder with executable + libs (faster startup)"
-            echo "  --clean    Remove dist/ build/ dist-release/ first"
+            echo "Usage: bash build.sh [--target main|vminfo|all] [--onefile|--onedir] [--clean]"
+            echo "  --target main    Build the main rvc-cluster-debug-tool"
+            echo "  --target vminfo  Build the standalone vminfo-report tool"
+            echo "  --target all     Build both (default)"
+            echo "  --onefile        Single executable (default, slower startup ~2s)"
+            echo "  --onedir         Folder with executable + libs (faster startup)"
+            echo "  --clean          Remove dist/ build/ dist-release/ first"
             exit 0
             ;;
+        *) echo "Unknown arg: $1"; exit 1 ;;
     esac
+    shift
 done
+
+case "$TARGET" in
+    main|vminfo|all) ;;
+    *) echo "ERROR: --target must be 'main', 'vminfo', or 'all' (got: $TARGET)"; exit 1 ;;
+esac
 
 # ── Detect platform ──
 PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -42,12 +61,13 @@ esac
 
 echo "================================================================"
 echo "  RVC Cluster Debug Tool — Build for ${PLATFORM_NAME}-${ARCH}"
+echo "  Target: ${TARGET}   Mode: ${BUILD_MODE}"
 echo "================================================================"
 
 # ── Activate or create venv ──
 if [ ! -d "$VENV_DIR" ]; then
     echo ""
-    echo "[1/4] Virtualenv not found — running setup_env.sh first..."
+    echo "[setup] Virtualenv not found — running setup_env.sh first..."
     bash "${PROJECT_ROOT}/env_validation_tool/setup_env.sh"
 fi
 
@@ -60,93 +80,92 @@ echo "  Tool version: $VERSION"
 
 # ── Install pyinstaller if missing ──
 if ! "$PY" -c "import PyInstaller" 2>/dev/null; then
-    echo ""
-    echo "[2/4] Installing PyInstaller..."
+    echo "  Installing PyInstaller..."
     "$PIP" install --upgrade pyinstaller --quiet
-else
-    echo "[2/4] PyInstaller already installed."
 fi
 
 # ── Optional clean ──
 if [ "$CLEAN_FIRST" = "1" ]; then
-    echo ""
-    echo "[3/4] Cleaning old build artifacts..."
+    echo "  Cleaning old build artifacts..."
     rm -rf "${PROJECT_ROOT}/dist" "${PROJECT_ROOT}/build" "${PROJECT_ROOT}/dist-release"
     rm -f "${PROJECT_ROOT}"/*.spec
 fi
 
-# ── Build ──
-echo ""
-echo "[3/4] Building executable (${BUILD_MODE})..."
+mkdir -p "${PROJECT_ROOT}/dist-release"
 cd "$PROJECT_ROOT"
 
-EXEC_NAME="rvc-cluster-debug-tool"
-DIST_NAME="${EXEC_NAME}-${VERSION}-${PLATFORM_NAME}-${ARCH}"
+# ── Build helper ──
+# args: <exec_name> <entry_script> [extra_pyinstaller_args...]
+build_one() {
+    local exec_name="$1"
+    local entry_script="$2"
+    shift 2
 
-"$PY" -m PyInstaller \
-    "$BUILD_MODE" \
-    --name "$EXEC_NAME" \
-    --hidden-import pyVmomi \
-    --hidden-import pyVim \
-    --hidden-import pyVim.connect \
-    --hidden-import yaml \
-    --hidden-import openpyxl \
-    --hidden-import fpdf \
-    --hidden-import paramiko \
-    --collect-submodules pyVmomi \
-    --collect-submodules pyVim \
-    --collect-data pyVmomi \
-    --add-data "env_validation_tool/config.sample.yaml:env_validation_tool" \
-    --noconfirm \
-    --log-level WARN \
-    run_tool.py
+    local dist_name="${exec_name}-${VERSION}-${PLATFORM_NAME}-${ARCH}"
 
-# ── Package ──
-echo ""
-echo "[4/4] Packaging release artifact..."
-mkdir -p "${PROJECT_ROOT}/dist-release"
+    echo ""
+    echo "── Building: $exec_name (entry: $entry_script) ──────────────"
 
-if [ "$BUILD_MODE" = "--onefile" ]; then
-    OUT_PATH="${PROJECT_ROOT}/dist-release/${DIST_NAME}"
-    cp "${PROJECT_ROOT}/dist/${EXEC_NAME}" "$OUT_PATH"
-    chmod +x "$OUT_PATH"
-    SIZE=$(du -h "$OUT_PATH" | cut -f1)
-    echo "  Built single file : $OUT_PATH ($SIZE)"
-else
-    TARBALL="${PROJECT_ROOT}/dist-release/${DIST_NAME}.tar.gz"
-    cp "${PROJECT_ROOT}/env_validation_tool/config.sample.yaml" "${PROJECT_ROOT}/dist/${EXEC_NAME}/"
-    cp "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/dist/${EXEC_NAME}/" 2>/dev/null || true
-    cd "${PROJECT_ROOT}/dist"
-    tar czf "$TARBALL" "${EXEC_NAME}"
-    cd "$PROJECT_ROOT"
-    SIZE=$(du -h "$TARBALL" | cut -f1)
-    echo "  Built folder tarball : $TARBALL ($SIZE)"
+    "$PY" -m PyInstaller \
+        "$BUILD_MODE" \
+        --name "$exec_name" \
+        --hidden-import pyVmomi \
+        --hidden-import pyVim \
+        --hidden-import pyVim.connect \
+        --hidden-import yaml \
+        --hidden-import openpyxl \
+        --hidden-import fpdf \
+        --hidden-import paramiko \
+        --collect-submodules pyVmomi \
+        --collect-submodules pyVim \
+        --collect-data pyVmomi \
+        --add-data "env_validation_tool/config.sample.yaml:env_validation_tool" \
+        --noconfirm \
+        --log-level WARN \
+        "$@" \
+        "$entry_script"
+
+    if [ "$BUILD_MODE" = "--onefile" ]; then
+        local out_path="${PROJECT_ROOT}/dist-release/${dist_name}"
+        cp "${PROJECT_ROOT}/dist/${exec_name}" "$out_path"
+        chmod +x "$out_path"
+        local size=$(du -h "$out_path" | cut -f1)
+        echo "  ✓ ${dist_name}  ($size)"
+        # Smoke test
+        "${out_path}" --version 2>/dev/null || true
+    else
+        local tarball="${PROJECT_ROOT}/dist-release/${dist_name}.tar.gz"
+        cp "${PROJECT_ROOT}/env_validation_tool/config.sample.yaml" \
+           "${PROJECT_ROOT}/dist/${exec_name}/" 2>/dev/null || true
+        cp "${PROJECT_ROOT}/README.md" \
+           "${PROJECT_ROOT}/dist/${exec_name}/" 2>/dev/null || true
+        (cd "${PROJECT_ROOT}/dist" && tar czf "$tarball" "${exec_name}")
+        local size=$(du -h "$tarball" | cut -f1)
+        echo "  ✓ ${dist_name}.tar.gz  ($size)"
+    fi
+}
+
+# ── Build main tool ──
+if [ "$TARGET" = "main" ] || [ "$TARGET" = "all" ]; then
+    build_one "rvc-cluster-debug-tool" "run_tool.py"
 fi
 
-# ── Smoke test ──
-echo ""
-echo "  Smoke test..."
-if [ "$BUILD_MODE" = "--onefile" ]; then
-    "${PROJECT_ROOT}/dist-release/${DIST_NAME}" --version
-else
-    "${PROJECT_ROOT}/dist/${EXEC_NAME}/${EXEC_NAME}" --version
+# ── Build vminfo standalone ──
+if [ "$TARGET" = "vminfo" ] || [ "$TARGET" = "all" ]; then
+    build_one "vminfo-report" "scripts/vminfo_report.py"
 fi
 
 echo ""
 echo "================================================================"
-echo "  Build complete!"
+echo "  Build complete — artifacts in dist-release/"
 echo "================================================================"
+ls -lh "${PROJECT_ROOT}/dist-release/"
 echo ""
-echo "  Distribute the file in dist-release/ to customers."
-echo "  They can run it directly without installing Python:"
-if [ "$BUILD_MODE" = "--onefile" ]; then
-    echo ""
-    echo "    ./${DIST_NAME} --version"
-    echo "    ./${DIST_NAME} interactive"
-    echo "    ./${DIST_NAME} report -c config.yaml"
-else
-    echo ""
-    echo "    tar xzf ${DIST_NAME}.tar.gz"
-    echo "    ./${EXEC_NAME}/${EXEC_NAME} interactive"
+echo "  Quick test:"
+if [ "$TARGET" = "main" ] || [ "$TARGET" = "all" ]; then
+    echo "    ./dist-release/rvc-cluster-debug-tool-${VERSION}-${PLATFORM_NAME}-${ARCH} --version"
+fi
+if [ "$TARGET" = "vminfo" ] || [ "$TARGET" = "all" ]; then
+    echo "    ./dist-release/vminfo-report-${VERSION}-${PLATFORM_NAME}-${ARCH} --help"
 fi
 echo ""
