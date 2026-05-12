@@ -318,22 +318,37 @@ def _check_vm_info(session):
                           f"{n.get('mac','?'):<20} "
                           f"{_c(conn_color, 'Yes' if n.get('connected') else 'No')}")
 
-                # SCSI Controllers — show with attached disks
-                scsi = [c for c in controllers if "SCSI" in c.get("type", "") or "Scsi" in c.get("type", "")]
-                if scsi:
+                # Storage Controllers (SCSI / SATA / NVMe / AHCI) with attached disks.
+                # Filter by class name keywords — pyVmomi types include things like
+                # VirtualLsiLogicController, ParaVirtualSCSIController,
+                # VirtualLsiLogicSASController, VirtualAHCIController, etc.
+                ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual",
+                                  "SCSI", "AHCI", "SATA", "NVMe", "NVME")
+                storage_ctrls = [c for c in controllers
+                                 if any(k in c.get("type", "") for k in ctype_keywords)
+                                 or "scsi" in c.get("label", "").lower()
+                                 or "sata" in c.get("label", "").lower()
+                                 or "nvme" in c.get("label", "").lower()]
+                if storage_ctrls:
                     print()
-                    print(f"    {_c(_BOLD, 'SCSI Controllers')}  ({len(scsi)})")
-                    for c in scsi:
+                    print(f"    {_c(_BOLD, 'Storage Controllers')}  ({len(storage_ctrls)})")
+                    for c in storage_ctrls:
                         ctype    = c.get("type", "?")
                         bus      = c.get("bus_number", "?")
                         sharing  = c.get("sharing", "noSharing")
                         hot_add  = c.get("hot_add_remove", None)
                         ctrl_key = c.get("key")
-                        pvscsi_color = _GREEN if "ParaVirtual" in ctype else _YELLOW
+                        # PVSCSI / NVMe = green (preferred), LSI / BusLogic = yellow
+                        if "ParaVirtual" in ctype or "NVMe" in ctype or "NVME" in ctype:
+                            color = _GREEN
+                        elif "LsiLogic" in ctype or "BusLogic" in ctype:
+                            color = _YELLOW
+                        else:
+                            color = _CYAN
 
                         print()
-                        print(f"      {_c(pvscsi_color, _c(_BOLD, c.get('label','?')))}")
-                        print(f"        Type      : {_c(pvscsi_color, ctype)}")
+                        print(f"      {_c(color, _c(_BOLD, c.get('label','?')))}")
+                        print(f"        Type      : {_c(color, ctype)}")
                         print(f"        Bus #     : {bus}")
                         print(f"        Sharing   : {sharing}")
                         if hot_add is not None:
