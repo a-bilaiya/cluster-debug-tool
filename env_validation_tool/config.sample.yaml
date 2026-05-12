@@ -1,0 +1,66 @@
+# ─────────────────────────────────────────────────────────────
+#  RVC Environment Validation Tool — Configuration
+# ─────────────────────────────────────────────────────────────
+#  Copy this file to config.yaml and fill in your values.
+#  Run:  python -m env_validation_tool
+#        python -m env_validation_tool -c /path/to/config.yaml
+#  CLI arguments override any values set here.
+# ─────────────────────────────────────────────────────────────
+
+# ── Connection ──────────────────────────────────────────────
+vcenter: 10.4.111.202
+vcenter_user: administrator@vsphere.local
+vcenter_pass: CHANGEME
+
+# Alternative: list ESXi hosts directly (used if vcenter is not set)
+# esxi_ips: 10.4.111.219,10.4.111.235,10.4.111.188
+
+esxi_user: root
+esxi_pass: CHANGEME
+
+# ── Discovery ──────────────────────────────────────────────
+# Filter hosts by server model substring (e.g. XR4510, R7420)
+host_model_filter: XR4510
+
+# Validation mode: pre-deploy | post-deploy | full
+mode: full
+
+# Substring pattern to identify RVC edge VMs on each host
+vm_pattern: vc-vr7400
+
+# Comma-separated patterns to exclude from VM matching
+vm_exclude: vcenter,vCenter
+
+# ── Network / iperf (post-deploy only) ─────────────────────
+# Path to SSH private key for edge VM access
+ssh_key: deployment/ssh_keys/ubuntu.pem
+
+# SSH username for edge VMs
+ssh_user: ubuntu
+
+# iperf3 test duration in seconds
+iperf_duration: 10
+
+# iperf3 parallel streams
+iperf_streams: 4
+
+# ── Datacenter filter (optional) ───────────────────────────
+# Filter hosts by vCenter datacenter name substring
+# datacenter: RVC_R7K_SILVER_SJC_B30303-24
+
+# ── Troubleshoot ───────────────────────────────────────────
+# Performance stats lookback in minutes
+perf_interval: 60
+
+# Alarms / events / tasks lookback in days
+event_days: 7
+
+# ── Output ─────────────────────────────────────────────────
+# JSON report output path
+output: /tool/out/report.json
+
+# PDF report output path
+output_pdf: /tool/out/report.pdf
+
+# Excel report output path
+output_xlsx: /tool/out/report.xlsx

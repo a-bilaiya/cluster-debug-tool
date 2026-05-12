@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtualenv
+.venv/
+venv/
+env/
+
+# Config files (contain passwords — never commit)
+env_validation_tool/config.yaml
+env_validation_tool/config_*.yaml
+!env_validation_tool/config.sample.yaml
+
+# Output reports
+env_validation_tool/out/
+/tool/
+
+# IDE
+.vscode/
+.idea/
+*.swp
