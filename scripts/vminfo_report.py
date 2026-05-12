@@ -75,8 +75,8 @@ def _parse_args():
                    help="ESXi password")
     p.add_argument("--vm-pattern", default="",
                    help="VM name substring filter (default: all VMs)")
-    p.add_argument("--output-dir", default="/tool/out",
-                   help="Output directory (default: /tool/out)")
+    p.add_argument("--output-dir", default="./vminfo_reports",
+                   help="Output directory (default: ./vminfo_reports/ in current dir)")
     p.add_argument("--customer", default="",
                    help="Customer/cluster name to embed in reports")
     return p.parse_args()
@@ -487,19 +487,19 @@ def main():
         "hosts":      hosts,
     }
 
-    out_dir  = args.output_dir
+    out_dir = os.path.abspath(args.output_dir)
     os.makedirs(out_dir, exist_ok=True)
-    base     = os.path.join(out_dir, f"vminfo_{timestamp}")
+    base = os.path.join(out_dir, f"vminfo_{timestamp}")
     json_path = base + ".json"
     pdf_path  = base + ".pdf"
     xlsx_path = base + ".xlsx"
     zip_path  = base + ".zip"
 
     print()
-    print(f"  Writing reports...")
-    _write_json(data, json_path);   print(f"    JSON  : {json_path}")
-    _write_excel(data, xlsx_path);  print(f"    Excel : {xlsx_path}")
-    _write_pdf(data, pdf_path);     print(f"    PDF   : {pdf_path}")
+    print(f"  Writing reports to: {out_dir}")
+    _write_json(data, json_path);   print(f"    JSON  : {os.path.basename(json_path)}")
+    _write_excel(data, xlsx_path);  print(f"    Excel : {os.path.basename(xlsx_path)}")
+    _write_pdf(data, pdf_path);     print(f"    PDF   : {os.path.basename(pdf_path)}")
 
     # Bundle into a single ZIP
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -509,9 +509,10 @@ def main():
 
     size_mb = os.path.getsize(zip_path) / (1024 * 1024)
     print()
-    print(f"  ZIP bundle: {zip_path}  ({size_mb:.2f} MB)")
+    print(f"  >>> ZIP bundle ready: {zip_path}")
+    print(f"      ({size_mb:.2f} MB — contains JSON, PDF, and Excel)")
     print()
-    print("  Share the ZIP with Rubrik Support — it contains JSON, PDF, and Excel.")
+    print("  Share this ZIP file with Rubrik Support.")
 
 
 if __name__ == "__main__":

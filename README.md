@@ -17,8 +17,8 @@ A Python-based diagnostic and validation tool for **Rubrik Virtual Cluster (RVC)
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/a-bilaiya/rvc-cluster-debug-tool.git
-cd rvc-cluster-debug-tool
+git clone https://github.com/a-bilaiya/cluster-debug-tool.git
+cd cluster-debug-tool
 ```
 
 ### 2. Run the setup script
@@ -206,7 +206,7 @@ All reports are saved to `/tool/out/` by default.
 ## Standalone Executables (No Python Required)
 
 Pre-built executables for Linux, macOS, and Windows are on the
-[Releases page](https://github.com/a-bilaiya/rvc-cluster-debug-tool/releases).
+[Releases page](https://github.com/a-bilaiya/cluster-debug-tool/releases).
 
 ```bash
 # Linux x86_64
@@ -324,7 +324,7 @@ All subcommands and the full troubleshoot run work directly against ESXi hosts (
 ## Project Structure
 
 ```
-rvc-cluster-debug-tool/
+cluster-debug-tool/
   setup.py                          # package definition
   requirements.txt                  # pip dependencies
   README.md
