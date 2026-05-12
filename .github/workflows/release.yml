@@ -1,0 +1,111 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86_64
+          - os: macos-13      # Intel macOS
+            label: macos-x86_64
+          - os: macos-14      # Apple Silicon
+            label: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+          ./.venv/bin/pip install -e .
+          ./.venv/bin/pip install pyinstaller
+
+      - name: Build executable
+        run: bash build.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rvc-cluster-debug-tool-${{ matrix.label }}
+          path: dist-release/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          ls -lh release-files/
+
+      - name: Generate checksums
+        run: |
+          cd release-files
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-files/*
+          generate_release_notes: true
+          body: |
+            ## RVC Cluster Debug Tool ${{ github.ref_name }}
+
+            Standalone executables for Linux and macOS — no Python install required.
+
+            ### Download
+
+            | Platform | File |
+            |----------|------|
+            | Linux x86_64    | `rvc-cluster-debug-tool-*-linux-x86_64`   |
+            | macOS Intel     | `rvc-cluster-debug-tool-*-macos-x86_64`   |
+            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64` |
+
+            ### Usage
+
+            ```bash
+            chmod +x rvc-cluster-debug-tool-*
+            ./rvc-cluster-debug-tool-* --version
+            ./rvc-cluster-debug-tool-* interactive
+            ./rvc-cluster-debug-tool-* report -c config.yaml
+            ```
+
+            See `SHA256SUMS.txt` for file integrity verification.

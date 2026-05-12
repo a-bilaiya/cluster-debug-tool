@@ -203,6 +203,58 @@ All reports are saved to `/tool/out/` by default.
 
 ---
 
+## Standalone Executables (No Python Required)
+
+Pre-built executables for Linux and macOS are available on the
+[Releases page](https://github.com/a-bilaiya/rvc-cluster-debug-tool/releases).
+
+```bash
+# Linux x86_64
+chmod +x rvc-cluster-debug-tool-*-linux-x86_64
+./rvc-cluster-debug-tool-*-linux-x86_64 interactive
+
+# macOS (Intel or Apple Silicon)
+chmod +x rvc-cluster-debug-tool-*-macos-*
+./rvc-cluster-debug-tool-*-macos-* interactive
+```
+
+These bundle Python and all dependencies into a single ~26 MB file —
+customers don't need to install Python or pip.
+
+### Building executables locally
+
+To build on your own machine (Linux or macOS):
+
+```bash
+# Build single-file executable for the current platform
+bash build.sh
+
+# Or build folder distribution (faster startup)
+bash build.sh --onedir
+
+# Clean previous build artifacts first
+bash build.sh --clean
+```
+
+Output appears in `dist-release/`. The build uses **PyInstaller** and takes
+~1 minute. PyInstaller cannot cross-compile, so build on each target OS.
+
+### Cutting a release (maintainers)
+
+Tag a version and push — GitHub Actions automatically builds for Linux x86_64,
+macOS Intel, and macOS Apple Silicon, then creates a GitHub Release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow at `.github/workflows/release.yml` builds all 3 platforms in
+parallel, generates SHA256 checksums, and publishes a GitHub Release with
+all binaries attached.
+
+---
+
 ## Sharing Reports with Rubrik Support
 
 When contacting Rubrik Support about cluster issues, run the full report and attach:
