@@ -205,7 +205,7 @@ All reports are saved to `/tool/out/` by default.
 
 ## Standalone Executables (No Python Required)
 
-Pre-built executables for Linux and macOS are available on the
+Pre-built executables for Linux, macOS, and Windows are on the
 [Releases page](https://github.com/a-bilaiya/rvc-cluster-debug-tool/releases).
 
 ```bash
@@ -218,40 +218,56 @@ chmod +x rvc-cluster-debug-tool-*-macos-*
 ./rvc-cluster-debug-tool-*-macos-* interactive
 ```
 
+```powershell
+# Windows PowerShell
+.\rvc-cluster-debug-tool-*-windows-x86_64.exe interactive
+```
+
 These bundle Python and all dependencies into a single ~26 MB file —
 customers don't need to install Python or pip.
 
 ### Building executables locally
 
-To build on your own machine (Linux or macOS):
+To build on your own machine, use the script that matches your OS:
 
-```bash
-# Build single-file executable for the current platform
-bash build.sh
+| OS | Command |
+|----|---------|
+| Linux  | `bash build.sh`              |
+| macOS  | `bash build.sh`              |
+| Windows | `.\build.ps1`               |
 
-# Or build folder distribution (faster startup)
-bash build.sh --onedir
+Common options (work for both scripts):
 
-# Clean previous build artifacts first
-bash build.sh --clean
-```
+| Option | Behavior |
+|--------|----------|
+| `--onefile` (default) | Single executable, ~26 MB, ~2s startup |
+| `--onedir`            | Folder with executable + libs, instant startup |
+| `--clean`             | Delete `dist/` `build/` `dist-release/` first |
 
 Output appears in `dist-release/`. The build uses **PyInstaller** and takes
-~1 minute. PyInstaller cannot cross-compile, so build on each target OS.
+~1 minute. PyInstaller **cannot cross-compile** — build on each target OS.
 
 ### Cutting a release (maintainers)
 
-Tag a version and push — GitHub Actions automatically builds for Linux x86_64,
-macOS Intel, and macOS Apple Silicon, then creates a GitHub Release:
+Tag a version and push — GitHub Actions builds for all 4 platforms in parallel
+and publishes a GitHub Release:
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The workflow at `.github/workflows/release.yml` builds all 3 platforms in
-parallel, generates SHA256 checksums, and publishes a GitHub Release with
-all binaries attached.
+Builds produced:
+
+| Platform | Runner | Output |
+|----------|--------|--------|
+| Linux x86_64        | `ubuntu-latest` | `*-linux-x86_64` |
+| macOS Intel         | `macos-13`      | `*-macos-x86_64` |
+| macOS Apple Silicon | `macos-14`      | `*-macos-arm64`  |
+| Windows x86_64      | `windows-latest`| `*-windows-x86_64.exe` |
+
+The workflow at `.github/workflows/release.yml` generates SHA256 checksums
+and attaches all binaries to the GitHub Release.
 
 ---
 

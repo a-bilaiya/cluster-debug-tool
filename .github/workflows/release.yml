@@ -23,11 +23,24 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x86_64
+            shell: bash
+            build_cmd: bash build.sh
           - os: macos-13      # Intel macOS
             label: macos-x86_64
+            shell: bash
+            build_cmd: bash build.sh
           - os: macos-14      # Apple Silicon
             label: macos-arm64
+            shell: bash
+            build_cmd: bash build.sh
+          - os: windows-latest
+            label: windows-x86_64
+            shell: pwsh
+            build_cmd: .\build.ps1
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,7 +50,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install dependencies (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         run: |
           python -m venv .venv
           ./.venv/bin/pip install --upgrade pip
@@ -45,8 +59,17 @@ jobs:
           ./.venv/bin/pip install -e .
           ./.venv/bin/pip install pyinstaller
 
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\pip.exe install -r requirements.txt
+          .\.venv\Scripts\pip.exe install -e .
+          .\.venv\Scripts\pip.exe install pyinstaller
+
       - name: Build executable
-        run: bash build.sh
+        run: ${{ matrix.build_cmd }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -89,23 +112,32 @@ jobs:
           body: |
             ## RVC Cluster Debug Tool ${{ github.ref_name }}
 
-            Standalone executables for Linux and macOS — no Python install required.
+            Standalone executables for Linux, macOS, and Windows — no Python install required.
 
             ### Download
 
             | Platform | File |
             |----------|------|
-            | Linux x86_64    | `rvc-cluster-debug-tool-*-linux-x86_64`   |
-            | macOS Intel     | `rvc-cluster-debug-tool-*-macos-x86_64`   |
-            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64` |
+            | Linux x86_64        | `rvc-cluster-debug-tool-*-linux-x86_64`   |
+            | macOS Intel         | `rvc-cluster-debug-tool-*-macos-x86_64`   |
+            | macOS Apple Silicon | `rvc-cluster-debug-tool-*-macos-arm64`    |
+            | Windows x86_64      | `rvc-cluster-debug-tool-*-windows-x86_64.exe` |
 
-            ### Usage
+            ### Usage (Linux / macOS)
 
             ```bash
             chmod +x rvc-cluster-debug-tool-*
             ./rvc-cluster-debug-tool-* --version
             ./rvc-cluster-debug-tool-* interactive
             ./rvc-cluster-debug-tool-* report -c config.yaml
+            ```
+
+            ### Usage (Windows PowerShell)
+
+            ```powershell
+            .\rvc-cluster-debug-tool-*-windows-x86_64.exe --version
+            .\rvc-cluster-debug-tool-*-windows-x86_64.exe interactive
+            .\rvc-cluster-debug-tool-*-windows-x86_64.exe report -c config.yaml
             ```
 
             See `SHA256SUMS.txt` for file integrity verification.
