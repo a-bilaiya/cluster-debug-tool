@@ -203,7 +203,7 @@ def build_parser():
 
 _SUBCOMMANDS = {
     "interactive", "alarms", "tasks", "reservations",
-    "hardware", "capacity", "validate", "report", "help",
+    "hardware", "capacity", "validate", "vminfo", "report", "help",
 }
 
 _USAGE_TEXT = """\
@@ -211,14 +211,18 @@ RVC Environment Validation Tool
 ================================
 
 SUBCOMMANDS (quick one-shot checks):
-  python -m env_validation_tool alarms        -c config.yaml
-  python -m env_validation_tool tasks         -c config.yaml
-  python -m env_validation_tool reservations  -c config.yaml
-  python -m env_validation_tool hardware      -c config.yaml
-  python -m env_validation_tool capacity      -c config.yaml
-  python -m env_validation_tool validate      -c config.yaml
-  python -m env_validation_tool report        -c config.yaml [--output-base /tool/out/report]
-  python -m env_validation_tool interactive   -c config.yaml
+  -c config.yaml is optional for all subcommands.
+  Without it, the tool prompts for ESXi IPs and credentials.
+
+  python -m env_validation_tool alarms        [-c config.yaml]
+  python -m env_validation_tool tasks         [-c config.yaml]
+  python -m env_validation_tool reservations  [-c config.yaml]
+  python -m env_validation_tool hardware      [-c config.yaml]
+  python -m env_validation_tool capacity      [-c config.yaml]
+  python -m env_validation_tool validate      [-c config.yaml]
+  python -m env_validation_tool vminfo        [-c config.yaml]
+  python -m env_validation_tool report        [-c config.yaml] [--output-base /tool/out/report]
+  python -m env_validation_tool interactive   [-c config.yaml]
 
 FULL RUN (existing --mode flag):
   python -m env_validation_tool -c config.yaml --mode troubleshoot
@@ -246,28 +250,50 @@ def _subcommand_parse_args(argv):
     return known
 
 
-def _build_subcommand_session(cfg, host_override=None):
-    """Build an interactive-style session dict from a loaded config dict."""
-    import ssl
-    from pyVim.connect import SmartConnect, Disconnect  # noqa: F401 — used by callers
-    from pyVmomi import vim
+def _prompt_if_missing(cfg, host_override=None):
+    """Fill missing connection fields from cfg by prompting the user."""
+    import getpass
 
     raw_ips = cfg.get("esxi_ips", "")
     esxi_ips = [ip.strip() for ip in str(raw_ips).split(",") if ip.strip()]
     if host_override:
         esxi_ips = [h.strip() for h in host_override.split(",") if h.strip()]
 
-    user = cfg.get("esxi_user", "root")
+    if not esxi_ips:
+        raw = input("  ESXi IPs (comma-separated): ").strip()
+        esxi_ips = [ip.strip() for ip in raw.split(",") if ip.strip()]
+        if not esxi_ips:
+            raise SystemExit("[ERROR] No ESXi IPs provided.")
+
+    user = cfg.get("esxi_user", "") or input("  ESXi username [root]: ").strip() or "root"
+
     password = cfg.get("esxi_pass", "")
     if not password:
-        raise SystemExit("[ERROR] esxi_pass not set in config — cannot connect.")
+        password = getpass.getpass("  ESXi password: ")
+        if not password:
+            raise SystemExit("[ERROR] Password is required.")
+
+    vm_pattern = cfg.get("vm_pattern", "")
+    if not vm_pattern:
+        vm_pattern = input("  VM name filter (e.g. rvc-ls, leave blank for all): ").strip()
+
+    return esxi_ips, user, password, vm_pattern
+
+
+def _build_subcommand_session(cfg, host_override=None):
+    """Build an interactive-style session dict, prompting for any missing fields."""
+    import ssl
+    from pyVim.connect import SmartConnect
+    from pyVmomi import vim
+
+    esxi_ips, user, password, vm_pattern = _prompt_if_missing(cfg, host_override)
 
     session = {
         "esxi_ips": esxi_ips,
         "esxi_user": user,
         "esxi_pass": password,
         "hosts": {},
-        "vm_pattern": cfg.get("vm_pattern", ""),
+        "vm_pattern": vm_pattern,
     }
 
     print("  Connecting...")
@@ -313,16 +339,15 @@ def _run_subcommand(subcommand, argv):
     from .interactive import (
         _check_alarms, _check_tasks, _check_reservations,
         _check_hardware, _check_capacity, _check_vm_validation,
-        _full_troubleshoot,
+        _check_vm_info, _full_troubleshoot,
     )
 
     sub_args = _subcommand_parse_args(argv)
     cfg = _load_config(sub_args.config)
-    if not cfg and sub_args.config == "config.yaml":
-        print(f"[WARN] Config file '{sub_args.config}' not found — "
-              "set -c <path> or create config.yaml")
-    elif cfg:
+    if cfg:
         print(f"[*] Loaded config from {sub_args.config}")
+    else:
+        print("[*] No config file found — prompting for connection details.")
 
     if subcommand == "interactive":
         from .interactive import run_interactive
@@ -344,6 +369,8 @@ def _run_subcommand(subcommand, argv):
             _check_capacity(session)
         elif subcommand == "validate":
             _check_vm_validation(session)
+        elif subcommand == "vminfo":
+            _check_vm_info(session)
         elif subcommand == "report":
             # Inject the output base into the session so _full_troubleshoot can pick it up
             session["_output_base"] = sub_args.output_base
@@ -460,7 +487,7 @@ def main(argv=None):
     if getattr(args, "interactive", False):
         from .interactive import run_interactive
         run_interactive()
-        return
+        return 0
 
     # Load config file and merge
     cfg = _load_config(args.config)

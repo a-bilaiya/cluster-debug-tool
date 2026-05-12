@@ -160,7 +160,7 @@ def _load_config_interactive(session):
     raw_ips = cfg.get("esxi_ips", "")
     user = cfg.get("esxi_user", "root")
     password = cfg.get("esxi_pass", "")
-    session["vm_pattern"] = cfg.get("vm_pattern", "")
+    vm_pattern = cfg.get("vm_pattern", "")
     session["esxi_ips"] = [ip.strip() for ip in str(raw_ips).split(",") if ip.strip()]
     session["esxi_user"] = user
     session["esxi_pass"] = password
@@ -183,6 +183,10 @@ def _load_config_interactive(session):
         print(_c(_RED, "\n  No hosts connected."))
         return False
 
+    if not vm_pattern:
+        vm_pattern = _ask("VM name filter (e.g. rvc-ls, leave blank for all)", default="")
+    session["vm_pattern"] = vm_pattern
+
     print(f"\n  {_c(_GREEN, str(len(connected)) + ' host(s) connected.')}")
     return True
 
@@ -203,6 +207,131 @@ def _pick_host(session):
 
 
 # ── Menu Actions ──
+
+def _check_vm_info(session):
+    _header("VM Hardware Info")
+    targets = _pick_host(session)
+    if not targets:
+        return
+
+    for ip in targets:
+        h = session["hosts"][ip]
+        _section(f"Host {ip}")
+        try:
+            host = h["host"]
+            hw_host = host.summary.hardware
+            esxi_ver = host.summary.config.product.fullName
+
+            # Host-level summary
+            print(f"  ESXi     : {esxi_ver}")
+            print(f"  CPU      : {hw_host.cpuModel}")
+            print(f"             {hw_host.numCpuCores} cores / {hw_host.numCpuThreads} threads  "
+                  f"@ {hw_host.cpuMhz} MHz per core")
+            print(f"  Memory   : {round(hw_host.memorySize / (1024**3), 1)} GB")
+
+            data = _ts_vm_details(host)
+            vms = data.get("vms", []) if isinstance(data, dict) else []
+
+            # Filter by vm_pattern if set
+            vm_pat = session.get("vm_pattern", "").lower()
+            if vm_pat:
+                vms = [v for v in vms if vm_pat in v.get("vm_name", "").lower()]
+
+            if not vms:
+                print(_c(_YELLOW, "\n  No matching VMs found."))
+                continue
+
+            for vm in vms:
+                name     = vm.get("vm_name", "?")
+                power    = vm.get("power_state", "?")
+                pcolor   = _GREEN if "On" in power else _YELLOW
+                mem_gb   = round(vm.get("memory_mb", 0) / 1024, 1)
+                vcpus    = vm.get("num_cpu", "?")
+                vm_ver   = vm.get("vm_version", "?")
+                guest_os = vm.get("guest_os", "?")
+                guest_ip = vm.get("guest_ip", "") or "—"
+                hostname = vm.get("guest_hostname", "") or "—"
+                tools    = vm.get("tools_status", "?")
+
+                print()
+                print(f"  {_c(_BOLD, name)}  [{_c(pcolor, power)}]")
+                print(f"    VM Version  : {vm_ver}")
+                print(f"    Guest OS    : {guest_os}")
+                print(f"    Guest IP    : {guest_ip}   Hostname: {hostname}")
+                print(f"    VMware Tools: {tools}")
+                print()
+
+                # CPU
+                print(f"    {_c(_BOLD, 'CPU')}")
+                print(f"      vCPUs     : {vcpus}")
+                cpu_alloc = _ts_cpu_allocation(host)
+                per_vm_cpu = {v["vm_name"]: v for v in cpu_alloc.get("per_vm", [])}
+                cv = per_vm_cpu.get(name, {})
+                resv_mhz  = cv.get("reservation_mhz", 0)
+                limit_mhz = cv.get("limit_mhz", -1)
+                shares    = cv.get("shares_level", "?")
+                resv_color = _GREEN if resv_mhz > 0 else _YELLOW
+                print(f"      Reservation: {_c(resv_color, str(resv_mhz) + ' MHz')}  "
+                      f"({round(resv_mhz/1000, 1)} GHz)")
+                print(f"      Limit      : {'Unlimited' if limit_mhz == -1 else str(limit_mhz) + ' MHz'}")
+                print(f"      Shares     : {shares}")
+
+                # Memory
+                print()
+                print(f"    {_c(_BOLD, 'Memory')}")
+                print(f"      Configured : {mem_gb} GB ({vm.get('memory_mb', 0)} MB)")
+                mem_alloc = _ts_memory_allocation(host)
+                per_vm_mem = {v["vm_name"]: v for v in mem_alloc.get("per_vm", [])}
+                mv = per_vm_mem.get(name, {})
+                mem_resv = mv.get("reservation_mb", 0)
+                mem_lim  = mv.get("limit_mb", -1)
+                resv_color = _GREEN if mem_resv >= vm.get("memory_mb", 0) else _YELLOW
+                print(f"      Reservation: {_c(resv_color, str(mem_resv) + ' MB')}")
+                print(f"      Limit      : {'Unlimited' if mem_lim == -1 else str(mem_lim) + ' MB'}")
+
+                # Disks
+                disks = vm.get("disks", [])
+                print()
+                print(f"    {_c(_BOLD, 'Disks')}  ({len(disks)})")
+                print(f"      {'Label':<25} {'Size':>10} {'Provisioning':<20} {'Mode'}")
+                print("      " + "─" * 75)
+                for d in disks:
+                    prov = d.get("provisioning", "?")
+                    prov_color = _GREEN if prov == "eagerzeroedthick" else _YELLOW
+                    print(f"      {d.get('label','?'):<25} "
+                          f"{str(round(d.get('capacity_gb', 0), 1)) + ' GB':>10}  "
+                          f"{_c(prov_color, prov):<28}  "
+                          f"{d.get('disk_mode','?')}")
+
+                # NICs
+                nics = vm.get("nics", [])
+                controllers = vm.get("controllers", [])
+                print()
+                print(f"    {_c(_BOLD, 'Network Adapters')}  ({len(nics)})")
+                print(f"      {'Label':<20} {'Type':<25} {'Network':<25} {'MAC':<20} {'Connected'}")
+                print("      " + "─" * 100)
+                for n in nics:
+                    conn_color = _GREEN if n.get("connected") else _YELLOW
+                    print(f"      {n.get('label','?'):<20} "
+                          f"{n.get('type','?'):<25} "
+                          f"{n.get('network','?'):<25} "
+                          f"{n.get('mac','?'):<20} "
+                          f"{_c(conn_color, 'Yes' if n.get('connected') else 'No')}")
+
+                # SCSI Controllers
+                scsi = [c for c in controllers if "SCSI" in c.get("type", "") or "Scsi" in c.get("type", "")]
+                if scsi:
+                    print()
+                    print(f"    {_c(_BOLD, 'SCSI Controllers')}  ({len(scsi)})")
+                    for c in scsi:
+                        ctype = c.get("type", "?")
+                        pvscsi_color = _GREEN if "ParaVirtual" in ctype else _YELLOW
+                        print(f"      {c.get('label','?'):<30} {_c(pvscsi_color, ctype)}")
+
+        except Exception as e:
+            print(_c(_RED, f"  Error: {e}"))
+            import traceback; traceback.print_exc()
+
 
 def _check_alarms(session):
     _header("Check Alarms")
@@ -247,8 +376,8 @@ def _check_reservations(session):
             host_total_mhz = hw.cpuMhz * hw.numCpuCores
             host_mem_mb = round(hw.memorySize / (1024**2))
 
-            cpu_data = _ts_cpu_allocation(h["si"], h["host"])
-            mem_data = _ts_memory_allocation(h["si"], h["host"])
+            cpu_data = _ts_cpu_allocation(h["host"])
+            mem_data = _ts_memory_allocation(h["host"])
 
             cpu_host = cpu_data.get("host_summary", {})
             mem_host = mem_data.get("host_summary", {})
@@ -405,8 +534,8 @@ def _check_vm_validation(session):
         _section(f"Host {ip}")
         try:
             vm_details = _ts_vm_details(h["host"])
-            cpu_data = _ts_cpu_allocation(h["si"], h["host"])
-            mem_data = _ts_memory_allocation(h["si"], h["host"])
+            cpu_data = _ts_cpu_allocation(h["host"])
+            mem_data = _ts_memory_allocation(h["host"])
 
             per_vm_cpu = {v["vm_name"]: v for v in cpu_data.get("per_vm", [])}
             per_vm_mem = {v["vm_name"]: v for v in mem_data.get("per_vm", [])}
@@ -448,7 +577,7 @@ def _check_capacity(session):
         h = session["hosts"][ip]
         _section(f"Host {ip}")
         try:
-            data = _ts_capacity_usage(h["si"], h["host"])
+            data = _ts_capacity_usage(h["host"])
             print(f"  {'Datastore':<30} {'Free':>12} {'Total':>12} {'Used %':>8}")
             print("  " + "─" * 70)
             for ds in data.get("datastores", []):
@@ -570,15 +699,16 @@ def _full_troubleshoot(session):
 
 _MAIN_MENU_ITEMS = [
     # (key, label, description, action_or_sentinel)
-    ("1", "Alarms",         "Check active & historical alarms (7-day window)",          _check_alarms),
-    ("2", "Reservations",   "CPU / memory reservation per VM vs RVCLS spec",            _check_reservations),
-    ("3", "Tasks",          "Recent tasks + failed operations (7-day window)",           _check_tasks),
-    ("4", "Hardware",       "Sensor health — temps, fans, voltage, power",              _check_hardware),
-    ("5", "Performance",    "CPU, memory, disk & network metrics (last 60 min)",        _check_performance),
-    ("6", "Validate VMs",   "Check VMs against RVCLS spec (vCPU, disk, NIC, resv)",    _check_vm_validation),
-    ("7", "Capacity",       "Datastore free space and usage %",                         _check_capacity),
-    ("8", "Full Report",    "All data → JSON + PDF + Excel",                            _full_troubleshoot),
-    ("9", "Reconnect",      "Change hosts or credentials",                               "reconnect"),
+    ("1", "Alarms",         "Check active & historical alarms (7-day window)",              _check_alarms),
+    ("2", "Reservations",   "CPU / memory reservation per VM vs RVCLS spec",                _check_reservations),
+    ("3", "Tasks",          "Recent tasks + failed operations (7-day window)",               _check_tasks),
+    ("4", "Hardware",       "Sensor health — temps, fans, voltage, power",                  _check_hardware),
+    ("5", "Performance",    "CPU, memory, disk & network metrics (last 60 min)",            _check_performance),
+    ("6", "VM Info",        "VM hardware: disks, CPU/mem, NICs, controllers, ESXi version", _check_vm_info),
+    ("7", "Validate VMs",   "Check VMs against RVCLS spec (vCPU, disk, NIC, resv)",        _check_vm_validation),
+    ("8", "Capacity",       "Datastore free space and usage %",                             _check_capacity),
+    ("9", "Full Report",    "All data → JSON + PDF + Excel",                                _full_troubleshoot),
+    ("0", "Reconnect",      "Change hosts or credentials",                                   "reconnect"),
 ]
 
 _MAIN_MENU_HELP = """\
@@ -600,12 +730,17 @@ _MAIN_MENU_HELP = """\
   5  Performance  → cpu.usage, mem.active, disk latency, net throughput
                     latest/avg/min/max over the lookback window
 
-  6  Validate VMs → vCPU≥24, RAM≥128GB, NICs≥4, OS disk≥400GB
+  6  VM Info      → per-VM: vCPU, memory (configured + reservation + limit)
+                    disks (size, provisioning, mode), NICs (type, network, MAC)
+                    SCSI controllers, VM hardware version, ESXi version
+                    color-coded: PVSCSI=green, LSI=yellow; eagerzeroedthick=green
+
+  7  Validate VMs → vCPU≥24, RAM≥128GB, NICs≥4, OS disk≥400GB
                     eagerzeroedthick, data disks 3-4, CPU resv≥48GHz
 
-  7  Capacity     → datastore free/used GB and %, flags >75% yellow >90% red
+  8  Capacity     → datastore free/used GB and %, flags >75% yellow >90% red
 
-  8  Full Report  → runs all of the above, saves JSON+PDF+Excel
+  9  Full Report  → runs all of the above, saves JSON+PDF+Excel
 
   Press Enter to return to menu."""
 
@@ -633,7 +768,7 @@ def _main_menu(session):
         for key, _label, _desc, action in _MAIN_MENU_ITEMS:
             if raw == key:
                 return action
-        print(_c(_RED, "  Invalid choice. Enter a number (1-9), h for help, or q to quit."))
+        print(_c(_RED, "  Invalid choice. Enter 1-9, 0 to reconnect, h for help, or q to quit."))
 
 
 def _disconnect_all(session):

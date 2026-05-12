@@ -88,6 +88,9 @@ output_xlsx: /tool/out/report.xlsx
 
 ### Subcommands (quick one-shot checks)
 
+`-c config.yaml` is optional — omit it to use `config.yaml` in the current directory,
+or the tool will warn and prompt if not found.
+
 ```bash
 # Check active and historical alarms
 python -m env_validation_tool alarms        -c config.yaml
@@ -114,11 +117,26 @@ python -m env_validation_tool report        -c config.yaml --output-base /tool/o
 
 ### Interactive menu
 
-Connects from config and drops into a menu — no flags needed:
+`-c` is **optional** for interactive mode:
 
 ```bash
-python -m env_validation_tool interactive   -c config.yaml
+# Auto-connects from config — skips the connection prompt
+python -m env_validation_tool interactive -c config.yaml
+
+# No config — shows connection menu (enter IPs/creds manually or pick a config file)
+python -m env_validation_tool interactive
 ```
+
+When no config is provided (or config file is not found), the tool prompts:
+
+```
+  How to connect?
+    1. Enter ESXi credentials manually
+    2. Load from config file
+```
+
+> **Tip**: `-c` is also optional for all other subcommands. Without it, the tool
+> looks for `config.yaml` in the current directory and warns if not found.
 
 Menu options:
 
