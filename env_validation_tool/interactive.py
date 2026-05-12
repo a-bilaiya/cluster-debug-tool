@@ -735,14 +735,35 @@ def _full_troubleshoot(session):
     except Exception as e:
         print(_c(_RED, f"  ✗ PDF failed: {e}"))
 
-    # Console summary
+    # Brief per-host summary (full details are in the report files)
     print()
+    print(_c(_BOLD, "  Per-host summary:"))
     for rep in reports:
         ip  = rep.get("esxi_ip", "?")
         tag = rep.get("host_identity", {}).get("service_tag", "?")
         ts  = rep.get("troubleshoot", {})
-        print_troubleshoot_summary(ip, tag, ts)
-        print()
+        health = ts.get("health_summary", {})
+        alarms = ts.get("alarms", {})
+        state  = ts.get("host_state", {})
+        overall = (health.get("overall") or "").upper()
+        if overall == "RED":
+            color = _RED
+        elif overall in ("YELLOW", "ORANGE"):
+            color = _YELLOW
+        else:
+            color = _GREEN
+
+        red_checks    = sum(1 for c in health.get("checks", []) if c.get("status") == "red")
+        yellow_checks = sum(1 for c in health.get("checks", []) if c.get("status") == "yellow")
+
+        print(f"    {ip:<18} [{tag}]  "
+              f"status={_c(color, overall or '?')}  "
+              f"alarms={alarms.get('total_count', 0)}  "
+              f"issues={red_checks} red / {yellow_checks} yellow  "
+              f"uptime={state.get('uptime_human', '?')}")
+
+    print()
+    print(_c(_BOLD, "  Open the Excel file (Summary sheet) for the full issues list."))
 
 
 _MAIN_MENU_ITEMS = [
