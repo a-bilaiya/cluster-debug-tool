@@ -318,19 +318,45 @@ def _check_vm_info(session):
                           f"{n.get('mac','?'):<20} "
                           f"{_c(conn_color, 'Yes' if n.get('connected') else 'No')}")
 
-                # SCSI Controllers
+                # SCSI Controllers — show with attached disks
                 scsi = [c for c in controllers if "SCSI" in c.get("type", "") or "Scsi" in c.get("type", "")]
                 if scsi:
                     print()
                     print(f"    {_c(_BOLD, 'SCSI Controllers')}  ({len(scsi)})")
                     for c in scsi:
-                        ctype = c.get("type", "?")
+                        ctype    = c.get("type", "?")
+                        bus      = c.get("bus_number", "?")
+                        sharing  = c.get("sharing", "noSharing")
+                        hot_add  = c.get("hot_add_remove", None)
+                        ctrl_key = c.get("key")
                         pvscsi_color = _GREEN if "ParaVirtual" in ctype else _YELLOW
-                        print(f"      {c.get('label','?'):<30} {_c(pvscsi_color, ctype)}")
+
+                        print()
+                        print(f"      {_c(pvscsi_color, _c(_BOLD, c.get('label','?')))}")
+                        print(f"        Type      : {_c(pvscsi_color, ctype)}")
+                        print(f"        Bus #     : {bus}")
+                        print(f"        Sharing   : {sharing}")
+                        if hot_add is not None:
+                            print(f"        Hot-Add   : {'Yes' if hot_add else 'No'}")
+
+                        # Disks attached to this controller
+                        attached = [d for d in disks if d.get("controller_key") == ctrl_key]
+                        if attached:
+                            print(f"        Disks ({len(attached)}):")
+                            print(f"          {'Label':<22} {'Unit':>5} {'Size':>10} {'Provisioning':<22} {'Mode'}")
+                            print("          " + "─" * 78)
+                            for d in sorted(attached, key=lambda x: x.get("unit_number", 0) or 0):
+                                prov = d.get("provisioning", "?")
+                                prov_color = _GREEN if prov == "eagerzeroedthick" else _YELLOW
+                                unit = str(d.get("unit_number", "?"))
+                                print(f"          {d.get('label','?'):<22} "
+                                      f"{unit:>5}  "
+                                      f"{str(round(d.get('capacity_gb', 0), 1)) + ' GB':>10}  "
+                                      f"{_c(prov_color, prov):<30}  "
+                                      f"{d.get('disk_mode','?')}")
 
         except Exception as e:
             print(_c(_RED, f"  Error: {e}"))
-            import traceback; traceback.print_exc()
 
 
 def _check_alarms(session):
@@ -662,6 +688,7 @@ def _full_troubleshoot(session):
         return
 
     result = {"hosts": reports, "cluster_name": "Interactive", "vcenter_ip": "?"}
+    result["customer_name"] = session.get("customer_name", "")
 
     # Ensure output directory exists
     out_dir = os.path.dirname(out_json)

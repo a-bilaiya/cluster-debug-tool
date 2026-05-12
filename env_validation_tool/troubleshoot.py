@@ -1347,6 +1347,9 @@ def _ts_vm_details(host):
                         "backing_file": backing_file,
                         "provisioning": provisioning,
                         "disk_mode": disk_mode,
+                        "controller_key": getattr(dev, "controllerKey", None),
+                        "unit_number": getattr(dev, "unitNumber", None),
+                        "key": getattr(dev, "key", None),
                     })
                 elif "Vmxnet" in dtype or "E1000" in dtype or "Ethernet" in dtype:
                     net_name = ""
@@ -1371,6 +1374,10 @@ def _ts_vm_details(host):
                     controllers.append({
                         "label": label,
                         "type": dtype.replace("vim.vm.device.", ""),
+                        "key": getattr(dev, "key", None),
+                        "bus_number": getattr(dev, "busNumber", None),
+                        "sharing": str(getattr(dev, "sharedBus", "noSharing")),
+                        "hot_add_remove": getattr(dev, "hotAddRemove", None),
                     })
             info["disks"] = disks
             info["nics"] = nics

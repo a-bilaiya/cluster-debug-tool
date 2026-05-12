@@ -8,9 +8,13 @@ Usage:
     generate_troubleshoot_xlsx(cluster_report, "troubleshoot.xlsx")
 """
 
+import datetime
+
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+from . import __version__
 
 
 # ── Styling constants ────────────────────────────────────────────────────
@@ -50,7 +54,10 @@ def generate_troubleshoot_xlsx(cluster_report, output_path):
     # Remove the default sheet — we'll create named ones
     wb.remove(wb.active)
 
-    # ── Cluster-level sheets FIRST ──
+    # ── Executive Summary is the very first sheet ──
+    _sheet_executive_summary(wb, cluster_report)
+
+    # ── Cluster-level sheets ──
     _sheet_cluster_summary(wb, cluster_report)
 
     vc_alarms = cluster_report.get("vcenter_alarms")
@@ -89,6 +96,179 @@ def generate_troubleshoot_xlsx(cluster_report, output_path):
 
 
 # ── Cluster-level sheets ────────────────────────────────────────────────
+
+def _sheet_executive_summary(wb, cluster_report):
+    """Create the first 'Summary' sheet with report info, health dashboard, issues, and support info."""
+    ws = wb.create_sheet("Summary")
+
+    hosts = cluster_report.get("hosts", [])
+    ok_hosts = [h for h in hosts if h.get("status") != "error"]
+    timestamp = cluster_report.get("collection_time", datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+    row = 1
+
+    # ── Section 1: Report Info ──
+    row = _section_header(ws, row, "Report Info")
+    kv1 = [
+        ("Tool", f"RVC Cluster Debug Tool v{__version__}"),
+        ("Generated", timestamp),
+        ("Customer", cluster_report.get("customer_name", "") or "—"),
+        ("Cluster", cluster_report.get("cluster_name", "") or cluster_report.get("cluster", "") or "—"),
+        ("vCenter", cluster_report.get("vcenter_ip", "") or cluster_report.get("vcenter", "") or "—"),
+        ("Hosts Scanned", len(ok_hosts)),
+    ]
+    row = _write_kv_block(ws, row, kv1)
+    row += 1
+
+    # ── Section 2: Health Dashboard ──
+    row = _section_header(ws, row, "Health Dashboard")
+
+    total_vms = 0
+    total_red = 0
+    total_yellow = 0
+
+    for hr in ok_hosts:
+        ts = hr.get("troubleshoot", {})
+        vm_details = ts.get("vm_details", {})
+        if isinstance(vm_details, dict) and not _skip_error(vm_details):
+            total_vms += len(vm_details.get("vms", []))
+
+        # Count red/yellow from health_summary checks
+        health = ts.get("health_summary", {})
+        for chk in health.get("checks", []):
+            st = str(chk.get("status", "")).upper()
+            if st == "RED":
+                total_red += 1
+            elif st == "YELLOW":
+                total_yellow += 1
+
+        # Count FAILs and WARNs from rvc_vm_validation
+        for vm_check in hr.get("rvc_vm_validation", []):
+            for chk in vm_check.get("checks", []):
+                st = str(chk.get("status", ""))
+                if st == "FAIL":
+                    total_red += 1
+                elif st == "WARN":
+                    total_yellow += 1
+
+    if total_red > 0:
+        overall_status = "ISSUES FOUND"
+    elif total_yellow > 0:
+        overall_status = "ISSUES FOUND"
+    else:
+        overall_status = "HEALTHY"
+
+    kv2 = [
+        ("Total Hosts", len(ok_hosts)),
+        ("Total VMs", total_vms),
+        ("Critical Issues (RED)", total_red),
+        ("Warnings (YELLOW)", total_yellow),
+        ("Overall Status", overall_status),
+    ]
+    row = _write_kv_block(ws, row, kv2)
+
+    # Color the Overall Status cell
+    status_row = row - 1
+    if total_red > 0:
+        status_fill = PatternFill(fill_type="solid", fgColor="FFCCCC")
+    elif total_yellow > 0:
+        status_fill = PatternFill(fill_type="solid", fgColor="FFF2CC")
+    else:
+        status_fill = PatternFill(fill_type="solid", fgColor="CCFFCC")
+    ws.cell(row=status_row, column=2).fill = status_fill
+    row += 1
+
+    # ── Section 3: Issues Found ──
+    row = _section_header(ws, row, "Issues Found")
+    issue_headers = ["Severity", "Host", "Check", "Required", "Actual"]
+    _write_header_row(ws, row, issue_headers)
+    row += 1
+
+    issues = []
+
+    for hr in ok_hosts:
+        ip = hr.get("esxi_ip", "?")
+        ts = hr.get("troubleshoot", {})
+        health = ts.get("health_summary", {})
+        for chk in health.get("checks", []):
+            st = str(chk.get("status", "")).upper()
+            if st in ("RED", "YELLOW"):
+                issues.append({
+                    "severity": st,
+                    "host": ip,
+                    "check": chk.get("category", chk.get("check", "")),
+                    "required": "",
+                    "actual": str(chk.get("value", chk.get("detail", ""))),
+                })
+
+        for vm_check in hr.get("rvc_vm_validation", []):
+            vm_name = vm_check.get("vm_name", "")
+            for chk in vm_check.get("checks", []):
+                st = str(chk.get("status", ""))
+                if st == "FAIL":
+                    issues.append({
+                        "severity": "RED",
+                        "host": f"{ip} / {vm_name}",
+                        "check": chk.get("check", ""),
+                        "required": str(chk.get("required", "")),
+                        "actual": str(chk.get("actual", "")),
+                    })
+                elif st == "WARN":
+                    issues.append({
+                        "severity": "YELLOW",
+                        "host": f"{ip} / {vm_name}",
+                        "check": chk.get("check", ""),
+                        "required": str(chk.get("required", "")),
+                        "actual": str(chk.get("actual", "")),
+                    })
+
+    # Sort: red first, then yellow
+    issues.sort(key=lambda x: (0 if x["severity"] == "RED" else 1))
+
+    if issues:
+        for i, issue in enumerate(issues):
+            vals = [
+                issue["severity"],
+                issue["host"],
+                issue["check"],
+                issue["required"],
+                issue["actual"],
+            ]
+            _write_data_row(ws, row, vals, i)
+            if issue["severity"] == "RED":
+                row_fill = PatternFill(fill_type="solid", fgColor="FFCCCC")
+            else:
+                row_fill = PatternFill(fill_type="solid", fgColor="FFF2CC")
+            for col in range(1, 6):
+                ws.cell(row=row, column=col).fill = row_fill
+            row += 1
+    else:
+        ok_fill = PatternFill(fill_type="solid", fgColor="CCFFCC")
+        ws.cell(row=row, column=1, value="All checks passed").fill = ok_fill
+        row += 1
+
+    row += 1
+
+    # ── Section 4: How to Share with Rubrik Support ──
+    row = _section_header(ws, row, "How to Share with Rubrik Support")
+    support_lines = [
+        ("", "To share this report with Rubrik Support:"),
+        ("1.", "Attach these files to your support case:"),
+        ("", "    report.xlsx   (this file)"),
+        ("", "    report.json   (raw data)"),
+        ("", "    report.pdf    (summary)"),
+        ("2.", "Include your Rubrik cluster serial number and software version."),
+        ("3.", "Describe the symptoms you are experiencing."),
+    ]
+    for key, val in support_lines:
+        cell_k = ws.cell(row=row, column=1, value=key)
+        cell_v = ws.cell(row=row, column=2, value=val)
+        cell_k.font = Font(name="Calibri", bold=bool(key), size=10)
+        cell_v.font = Font(name="Calibri", size=10)
+        row += 1
+
+    _auto_width(ws)
+
 
 def _sheet_cluster_summary(wb, cluster_report):
     """Create a one-row-per-host summary sheet as the first sheet."""
