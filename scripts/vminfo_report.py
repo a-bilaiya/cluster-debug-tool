@@ -266,32 +266,87 @@ def _write_excel(data, path):
                 ws.cell(row=row, column=2, value=value)
                 row += 1
 
-            # Disks
+            # Storage Controllers — disks nested under each controller
             disks = vm.get("disks", [])
-            if disks:
+            ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
+                              "AHCI", "SATA", "NVMe", "NVME", "USB")
+            controllers = vm.get("controllers", [])
+            storage_ctrls = [c for c in controllers
+                             if any(k in c.get("type", "") for k in ctype_keywords)]
+
+            if storage_ctrls:
                 row += 1
-                ws.cell(row=row, column=1, value=f"  Disks ({len(disks)})").font = BOLD
+                ws.cell(row=row, column=1,
+                        value=f"  Storage Controllers ({len(storage_ctrls)})").font = BOLD
                 row += 1
-                headers = ["Label", "Size GB", "Provisioning", "Disk Mode", "Controller Key", "Unit", "Backing File"]
+
+                for c in storage_ctrls:
+                    ctype = c.get("type", "")
+                    ctrl_fill = (OK_FILL if "ParaVirtual" in ctype or "NVMe" in ctype or "NVME" in ctype
+                                 else WARN_FILL if "LsiLogic" in ctype or "BusLogic" in ctype
+                                 else None)
+
+                    # Controller header row
+                    ws.cell(row=row, column=1,
+                            value=f"    {c.get('label','?')}  [{ctype}]  "
+                                  f"bus={c.get('bus_number','?')}  "
+                                  f"sharing={c.get('sharing','')}").font = BOLD
+                    if ctrl_fill:
+                        for ci in range(1, 8):
+                            ws.cell(row=row, column=ci).fill = ctrl_fill
+                    row += 1
+
+                    # Disks attached to this controller
+                    attached = [d for d in disks if d.get("controller_key") == c.get("key")]
+                    if attached:
+                        headers = ["", "Label", "Unit", "Size GB", "Provisioning", "Disk Mode", "Backing File"]
+                        for ci, h in enumerate(headers, start=1):
+                            cell = ws.cell(row=row, column=ci, value=h)
+                            cell.font = HEADER_FONT
+                            if h:
+                                cell.fill = HEADER_FILL
+                        row += 1
+                        for d in sorted(attached, key=lambda x: x.get("unit_number", 0) or 0):
+                            prov = d.get("provisioning", "?")
+                            prov_fill = OK_FILL if prov == "eagerzeroedthick" else WARN_FILL
+                            vals = [
+                                "",
+                                d.get("label", ""),
+                                d.get("unit_number", ""),
+                                d.get("capacity_gb", 0),
+                                prov,
+                                d.get("disk_mode", ""),
+                                d.get("backing_file", ""),
+                            ]
+                            for ci, v in enumerate(vals, start=1):
+                                cell = ws.cell(row=row, column=ci, value=v)
+                                if ci == 5:
+                                    cell.fill = prov_fill
+                            row += 1
+                    else:
+                        ws.cell(row=row, column=2, value="(no disks attached)")
+                        row += 1
+                    row += 1  # spacer
+
+            # Orphan disks (no matching controller in the storage list)
+            attached_keys = {c.get("key") for c in storage_ctrls}
+            orphan_disks = [d for d in disks if d.get("controller_key") not in attached_keys]
+            if orphan_disks:
+                ws.cell(row=row, column=1,
+                        value=f"  Other Disks (controller not detected) ({len(orphan_disks)})").font = BOLD
+                row += 1
+                headers = ["Label", "Size GB", "Provisioning", "Mode", "Backing File"]
                 for ci, h in enumerate(headers, start=1):
                     cell = ws.cell(row=row, column=ci, value=h)
                     cell.font = HEADER_FONT
                     cell.fill = HEADER_FILL
                 row += 1
-                for d in disks:
-                    prov = d.get("provisioning", "?")
-                    fill = OK_FILL if prov == "eagerzeroedthick" else WARN_FILL
-                    vals = [
-                        d.get("label", ""), d.get("capacity_gb", 0),
-                        prov, d.get("disk_mode", ""),
-                        d.get("controller_key", ""),
-                        d.get("unit_number", ""),
-                        d.get("backing_file", ""),
-                    ]
+                for d in orphan_disks:
+                    vals = [d.get("label", ""), d.get("capacity_gb", 0),
+                            d.get("provisioning", "?"), d.get("disk_mode", ""),
+                            d.get("backing_file", "")]
                     for ci, v in enumerate(vals, start=1):
-                        cell = ws.cell(row=row, column=ci, value=v)
-                        if ci == 3:
-                            cell.fill = fill
+                        ws.cell(row=row, column=ci, value=v)
                     row += 1
 
             # NICs
@@ -314,41 +369,6 @@ def _write_excel(data, path):
                     ]
                     for ci, v in enumerate(vals, start=1):
                         ws.cell(row=row, column=ci, value=v)
-                    row += 1
-
-            # Storage Controllers
-            ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
-                              "AHCI", "SATA", "NVMe", "NVME", "USB")
-            controllers = vm.get("controllers", [])
-            storage_ctrls = [c for c in controllers
-                             if any(k in c.get("type", "") for k in ctype_keywords)]
-            if storage_ctrls:
-                row += 1
-                ws.cell(row=row, column=1,
-                        value=f"  Storage Controllers ({len(storage_ctrls)})").font = BOLD
-                row += 1
-                headers = ["Label", "Type", "Bus #", "Sharing", "Hot-Add", "Key"]
-                for ci, h in enumerate(headers, start=1):
-                    cell = ws.cell(row=row, column=ci, value=h)
-                    cell.font = HEADER_FONT
-                    cell.fill = HEADER_FILL
-                row += 1
-                for c in storage_ctrls:
-                    ctype = c.get("type", "")
-                    fill = (OK_FILL if "ParaVirtual" in ctype or "NVMe" in ctype or "NVME" in ctype
-                            else WARN_FILL if "LsiLogic" in ctype or "BusLogic" in ctype
-                            else None)
-                    vals = [
-                        c.get("label", ""), ctype,
-                        c.get("bus_number", ""),
-                        c.get("sharing", ""),
-                        "Yes" if c.get("hot_add_remove") else "No",
-                        c.get("key", ""),
-                    ]
-                    for ci, v in enumerate(vals, start=1):
-                        cell = ws.cell(row=row, column=ci, value=v)
-                        if ci == 2 and fill:
-                            cell.fill = fill
                     row += 1
 
             row += 2  # space between VMs
@@ -413,17 +433,60 @@ def _write_pdf(data, path):
                 pdf.cell(0, 5, f"   {label:<22} : {value}", ln=1)
 
             disks = vm.get("disks", [])
-            if disks:
+            controllers = vm.get("controllers", [])
+            ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
+                              "AHCI", "SATA", "NVMe", "NVME", "USB")
+            storage_ctrls = [c for c in controllers
+                             if any(k in c.get("type", "") for k in ctype_keywords)]
+
+            # Storage Controllers section — disks nested under their controller
+            if storage_ctrls:
                 pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(0, 5, f"   Disks ({len(disks)})", ln=1)
+                pdf.cell(0, 5, f"   Storage Controllers ({len(storage_ctrls)})", ln=1)
+                for c in storage_ctrls:
+                    if pdf.get_y() > 260:
+                        pdf.add_page()
+                    pdf.set_font("Helvetica", "B", 9)
+                    pdf.cell(0, 5,
+                             f"      {c.get('label','?')}  "
+                             f"[{c.get('type','')}]  "
+                             f"bus={c.get('bus_number','?')}  "
+                             f"sharing={c.get('sharing','')}", ln=1)
+
+                    # Disks attached to this controller
+                    attached = [d for d in disks if d.get("controller_key") == c.get("key")]
+                    if attached:
+                        pdf.set_font("Helvetica", size=8)
+                        pdf.cell(0, 4,
+                                 f"        {'Label':<20} {'Unit':>5}  {'Size':>10}  "
+                                 f"{'Provisioning':<20}  {'Mode'}", ln=1)
+                        for d in sorted(attached, key=lambda x: x.get("unit_number", 0) or 0):
+                            pdf.cell(0, 4,
+                                     f"        {d.get('label','?'):<20} "
+                                     f"{str(d.get('unit_number','?')):>5}  "
+                                     f"{round(d.get('capacity_gb',0),1)} GB  "
+                                     f"{d.get('provisioning','?'):<20}  "
+                                     f"{d.get('disk_mode','')}", ln=1)
+                    else:
+                        pdf.set_font("Helvetica", size=8)
+                        pdf.cell(0, 4, "        (no disks attached)", ln=1)
+
+            # Orphan disks (none of the storage controllers we picked up own them)
+            attached_keys = {c.get("key") for c in storage_ctrls}
+            orphan_disks = [d for d in disks if d.get("controller_key") not in attached_keys]
+            if orphan_disks:
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.cell(0, 5,
+                         f"   Other Disks (controller not detected)  ({len(orphan_disks)})",
+                         ln=1)
                 pdf.set_font("Helvetica", size=8)
-                for d in disks:
+                for d in orphan_disks:
                     pdf.cell(0, 4,
                              f"      {d.get('label','?'):<20}  "
-                             f"{round(d.get('capacity_gb',0),1)} GB   "
-                             f"{d.get('provisioning','?'):<18}  "
-                             f"{d.get('disk_mode','')}", ln=1)
+                             f"{round(d.get('capacity_gb',0),1)} GB  "
+                             f"{d.get('provisioning','?')}", ln=1)
 
+            # NICs
             nics = vm.get("nics", [])
             if nics:
                 pdf.set_font("Helvetica", "B", 9)
@@ -435,22 +498,6 @@ def _write_pdf(data, path):
                              f"{n.get('type',''):<22}  "
                              f"{n.get('network','')}  "
                              f"({n.get('mac','')})", ln=1)
-
-            controllers = vm.get("controllers", [])
-            ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
-                              "AHCI", "SATA", "NVMe", "NVME", "USB")
-            storage_ctrls = [c for c in controllers
-                             if any(k in c.get("type", "") for k in ctype_keywords)]
-            if storage_ctrls:
-                pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(0, 5, f"   Storage Controllers ({len(storage_ctrls)})", ln=1)
-                pdf.set_font("Helvetica", size=8)
-                for c in storage_ctrls:
-                    pdf.cell(0, 4,
-                             f"      {c.get('label','?'):<22}  "
-                             f"{c.get('type',''):<32}  "
-                             f"bus={c.get('bus_number','?')}  "
-                             f"sharing={c.get('sharing','')}", ln=1)
             pdf.ln(2)
 
     pdf.output(path)
