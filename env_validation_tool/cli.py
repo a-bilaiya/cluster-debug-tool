@@ -274,6 +274,8 @@ def _prompt_if_missing(cfg, host_override=None):
             raise SystemExit("[ERROR] Password is required.")
 
     vm_pattern = cfg.get("vm_pattern", "")
+    if not vm_pattern:
+        vm_pattern = input("  VM name filter (e.g. rvc-ls, leave blank for all): ").strip()
 
     return esxi_ips, user, password, vm_pattern
 

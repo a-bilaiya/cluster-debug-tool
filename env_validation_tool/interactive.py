@@ -160,7 +160,7 @@ def _load_config_interactive(session):
     raw_ips = cfg.get("esxi_ips", "")
     user = cfg.get("esxi_user", "root")
     password = cfg.get("esxi_pass", "")
-    session["vm_pattern"] = cfg.get("vm_pattern", "")
+    vm_pattern = cfg.get("vm_pattern", "")
     session["esxi_ips"] = [ip.strip() for ip in str(raw_ips).split(",") if ip.strip()]
     session["esxi_user"] = user
     session["esxi_pass"] = password
@@ -182,6 +182,10 @@ def _load_config_interactive(session):
     if not connected:
         print(_c(_RED, "\n  No hosts connected."))
         return False
+
+    if not vm_pattern:
+        vm_pattern = _ask("VM name filter (e.g. rvc-ls, leave blank for all)", default="")
+    session["vm_pattern"] = vm_pattern
 
     print(f"\n  {_c(_GREEN, str(len(connected)) + ' host(s) connected.')}")
     return True
@@ -260,7 +264,7 @@ def _check_vm_info(session):
                 # CPU
                 print(f"    {_c(_BOLD, 'CPU')}")
                 print(f"      vCPUs     : {vcpus}")
-                cpu_alloc = _ts_cpu_allocation(h["si"], host)
+                cpu_alloc = _ts_cpu_allocation(host)
                 per_vm_cpu = {v["vm_name"]: v for v in cpu_alloc.get("per_vm", [])}
                 cv = per_vm_cpu.get(name, {})
                 resv_mhz  = cv.get("reservation_mhz", 0)
