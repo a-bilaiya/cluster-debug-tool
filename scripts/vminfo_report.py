@@ -384,6 +384,41 @@ def _write_excel(data, path):
     wb.save(path)
 
 
+# ── PDF helpers ──
+
+def _ascii(text):
+    """Make text safe for the latin-1 default Helvetica font in fpdf2.
+
+    Replaces common Unicode punctuation with ASCII equivalents and drops
+    anything else that can't be encoded.
+    """
+    if text is None:
+        return ""
+    s = str(text)
+    # Common unicode -> ASCII replacements
+    repl = {
+        "—": "-",   # em-dash
+        "–": "-",   # en-dash
+        "→": "->",  # right arrow
+        "←": "<-",  # left arrow
+        "‘": "'", "’": "'",  # smart single quotes
+        "“": '"', "”": '"',  # smart double quotes
+        "…": "...",  # ellipsis
+        " ": " ",    # non-breaking space
+        "•": "*",    # bullet
+        "·": "*",    # middle dot
+        "°": " deg", # degree
+        "±": "+/-",  # plus-minus
+        "×": "x",    # multiplication
+        "✓": "OK",   # check mark
+        "✗": "X",    # ballot X
+    }
+    for u, a in repl.items():
+        s = s.replace(u, a)
+    # Strip anything else outside latin-1
+    return s.encode("latin-1", "replace").decode("latin-1")
+
+
 # ── PDF colour palette ──
 _PDF_DARK   = (44, 62, 80)        # navy — primary headings
 _PDF_HOST   = (52, 73, 94)        # slate — host band
@@ -423,7 +458,7 @@ def _table_row(pdf, widths, values, fills=None, header=False, line_h=5):
         pdf.set_text_color(255, 255, 255)
         pdf.set_fill_color(*_PDF_HEADER)
         for w, v in zip(widths, values):
-            pdf.cell(w, line_h, str(v), border=1, align="L", fill=True)
+            pdf.cell(w, line_h, _ascii(v), border=1, align="L", fill=True)
         pdf.set_text_color(0, 0, 0)
         pdf.ln(line_h)
         return
@@ -437,7 +472,7 @@ def _table_row(pdf, widths, values, fills=None, header=False, line_h=5):
             pdf.set_fill_color(*cell_fill)
         else:
             pdf.set_fill_color(255, 255, 255)
-        pdf.cell(w, line_h, str(v), border=1, align="L", fill=True)
+        pdf.cell(w, line_h, _ascii(v), border=1, align="L", fill=True)
     pdf.ln(line_h)
 
 
@@ -446,7 +481,7 @@ def _section_band(pdf, text, color, height=7, font_size=11):
     pdf.set_font("Helvetica", "B", font_size)
     pdf.set_text_color(255, 255, 255)
     pdf.set_fill_color(*color)
-    pdf.cell(0, height, f"  {text}", ln=1, fill=True)
+    pdf.cell(0, height, _ascii(f"  {text}"), ln=1, fill=True)
     pdf.set_text_color(0, 0, 0)
 
 
@@ -459,9 +494,9 @@ def _kv_box(pdf, items, col_w_label=42, col_w_val=130, line_h=5):
         else:
             pdf.set_fill_color(255, 255, 255)
         pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(col_w_label, line_h, f" {label}", border=0, fill=True)
+        pdf.cell(col_w_label, line_h, _ascii(f" {label}"), border=0, fill=True)
         pdf.set_font("Helvetica", size=9)
-        pdf.cell(col_w_val, line_h, f" {val}", border=0, ln=1, fill=True)
+        pdf.cell(col_w_val, line_h, _ascii(f" {val}"), border=0, ln=1, fill=True)
 
 
 def _ensure_space(pdf, needed_mm):
@@ -479,12 +514,12 @@ def _write_pdf(data, path):
     # ── Title block ──
     pdf.set_text_color(*_PDF_DARK)
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 10, "VM Hardware Info Report", ln=1)
+    pdf.cell(0, 10, _ascii("VM Hardware Info Report"), ln=1)
     pdf.set_font("Helvetica", size=9)
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5,
-             f"Generated: {data.get('generated', '')}    "
-             f"|    Tool: Cluster Debug Tool v{__version__}",
+             _ascii(f"Generated: {data.get('generated', '')}    "
+                    f"|    Tool: Cluster Debug Tool v{__version__}"),
              ln=1)
     pdf.set_text_color(0, 0, 0)
     pdf.ln(2)
@@ -494,7 +529,7 @@ def _write_pdf(data, path):
     total_powered = sum(1 for h in data["hosts"] for v in h.get("vms", [])
                         if v.get("power_state") == "poweredOn")
     summary_items = [
-        ("Customer",       data.get("customer", "") or "—"),
+        ("Customer",       data.get("customer", "") or "-"),
         ("Hosts Scanned",  len(data["hosts"])),
         ("Total VMs",      total_vms),
         ("Powered On",     f"{total_powered} of {total_vms}"),
@@ -534,8 +569,8 @@ def _write_pdf(data, path):
             vm_kv = [
                 ("Hardware Version",  vm.get("vm_version", "?")),
                 ("Guest OS",          vm.get("guest_os", "?")),
-                ("Guest IP",          vm.get("guest_ip", "") or "—"),
-                ("Hostname",          vm.get("guest_hostname", "") or "—"),
+                ("Guest IP",          vm.get("guest_ip", "") or "-"),
+                ("Hostname",          vm.get("guest_hostname", "") or "-"),
                 ("VMware Tools",      vm.get("tools_status", "?")),
                 ("vCPU",              vm.get("num_cpu", "?")),
                 ("Memory",            f"{round(vm.get('memory_mb', 0)/1024, 1)} GB "
@@ -564,7 +599,7 @@ def _write_pdf(data, path):
                 pdf.set_font("Helvetica", "B", 9)
                 pdf.set_text_color(*_PDF_DARK)
                 pdf.cell(0, 5,
-                         f"  Storage Controllers ({len(storage_ctrls)})", ln=1)
+                         _ascii(f"  Storage Controllers ({len(storage_ctrls)})"), ln=1)
                 pdf.set_text_color(0, 0, 0)
 
                 for c in storage_ctrls:
@@ -578,7 +613,7 @@ def _write_pdf(data, path):
                              f"[{ctype}]    "
                              f"bus={c.get('bus_number', '?')}    "
                              f"sharing={c.get('sharing', 'noSharing')}")
-                    pdf.cell(0, 5, label, ln=1, fill=True)
+                    pdf.cell(0, 5, _ascii(label), ln=1, fill=True)
 
                     attached = [d for d in disks
                                 if d.get("controller_key") == c.get("key")]
@@ -610,7 +645,7 @@ def _write_pdf(data, path):
                             ], fills=row_fills)
                     else:
                         pdf.set_font("Helvetica", "I", 8)
-                        pdf.cell(0, 4, "      (no disks attached)", ln=1)
+                        pdf.cell(0, 4, _ascii("      (no disks attached)"), ln=1)
                     pdf.ln(1)
 
             # Orphan disks (controller wasn't in storage list)
@@ -621,7 +656,7 @@ def _write_pdf(data, path):
                 _ensure_space(pdf, 15)
                 pdf.set_font("Helvetica", "B", 9)
                 pdf.cell(0, 5,
-                         f"  Other Disks  ({len(orphan_disks)})", ln=1)
+                         _ascii(f"  Other Disks  ({len(orphan_disks)})"), ln=1)
                 widths = [12, 38, 22, 32, 22, 60]
                 _table_row(pdf, widths,
                            ["#", "Label", "Size", "Provisioning",
@@ -644,7 +679,7 @@ def _write_pdf(data, path):
             if nics:
                 _ensure_space(pdf, 15)
                 pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(0, 5, f"  Network Adapters ({len(nics)})", ln=1)
+                pdf.cell(0, 5, _ascii(f"  Network Adapters ({len(nics)})"), ln=1)
                 widths = [12, 38, 38, 50, 30, 18]
                 _table_row(pdf, widths,
                            ["#", "Label", "Type", "Network",
