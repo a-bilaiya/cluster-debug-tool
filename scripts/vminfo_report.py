@@ -268,11 +268,8 @@ def _write_excel(data, path):
 
             # Storage Controllers — disks nested under each controller
             disks = vm.get("disks", [])
-            ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
-                              "AHCI", "SATA", "NVMe", "NVME", "USB")
             controllers = vm.get("controllers", [])
-            storage_ctrls = [c for c in controllers
-                             if any(k in c.get("type", "") for k in ctype_keywords)]
+            storage_ctrls = _select_controllers_to_display(controllers, disks)
 
             if storage_ctrls:
                 row += 1
@@ -382,6 +379,50 @@ def _write_excel(data, path):
         ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
 
     wb.save(path)
+
+
+# ── Controller filtering ──
+
+# Primary storage controller substrings — always shown, even when empty
+_PRIMARY_STORAGE_KEYWORDS = (
+    "LsiLogic", "BusLogic", "ParaVirtual", "AHCI", "SATA",
+    "NVMe", "NVME", "SCSI",
+)
+# Auxiliary controllers (USB/IDE) — shown only if they carry a disk.
+# Excludes PS2 / PCI / SIO entirely (they never host VMDKs).
+_AUX_CONTROLLER_KEYWORDS = ("USB", "IDE")
+_ALL_DISK_HOSTING_KEYWORDS = _PRIMARY_STORAGE_KEYWORDS + _AUX_CONTROLLER_KEYWORDS
+
+
+def _is_primary_storage(ctype):
+    return any(k in (ctype or "") for k in _PRIMARY_STORAGE_KEYWORDS)
+
+
+def _is_disk_hosting(ctype):
+    return any(k in (ctype or "") for k in _ALL_DISK_HOSTING_KEYWORDS)
+
+
+def _select_controllers_to_display(controllers, disks):
+    """Return the controllers worth showing in the report.
+
+    Always show primary storage controllers (SCSI/SATA/NVMe family) even
+    when empty - an empty SCSI controller is meaningful info. USB/IDE are
+    shown only when a disk is actually attached (otherwise they're just
+    holding the CD-ROM and would be noise).
+    """
+    out = []
+    disks_by_key = {}
+    for d in disks:
+        disks_by_key.setdefault(d.get("controller_key"), []).append(d)
+
+    for c in controllers:
+        ctype = c.get("type", "")
+        has_disk = bool(disks_by_key.get(c.get("key")))
+        if _is_primary_storage(ctype):
+            out.append(c)
+        elif any(k in ctype for k in _AUX_CONTROLLER_KEYWORDS) and has_disk:
+            out.append(c)
+    return out
 
 
 # ── PDF helpers ──
@@ -594,10 +635,7 @@ def _write_pdf(data, path):
             # Storage controllers + disks
             disks = vm.get("disks", [])
             controllers = vm.get("controllers", [])
-            ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
-                              "AHCI", "SATA", "NVMe", "NVME", "USB")
-            storage_ctrls = [c for c in controllers
-                             if any(k in c.get("type", "") for k in ctype_keywords)]
+            storage_ctrls = _select_controllers_to_display(controllers, disks)
 
             if storage_ctrls:
                 _ensure_space(pdf, 25)
@@ -789,14 +827,12 @@ def _print_console_summary(data):
                   f"{cpu_re_str:>10} {ip}")
 
         # Disk-controller breakdown
-        ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
-                          "AHCI", "SATA", "NVMe", "NVME", "USB")
         for vm in vms:
-            ctrls = [c for c in vm.get("controllers", [])
-                     if any(k in c.get("type", "") for k in ctype_keywords)]
+            disks = vm.get("disks", [])
+            ctrls = _select_controllers_to_display(
+                vm.get("controllers", []), disks)
             if not ctrls:
                 continue
-            disks = vm.get("disks", [])
             print()
             print(f"    Storage layout — {vm.get('vm_name', '?')}")
             for c in ctrls:

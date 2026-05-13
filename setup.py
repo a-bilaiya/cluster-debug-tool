@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="env_validation_tool",
-    version="1.0.5",
+    version="1.0.6",
     description="Hypervisor Environment Validation & Troubleshoot Tool — collect ESXi/vCenter diagnostics and validate host hardware",
     packages=find_packages(),
     python_requires=">=3.8",
