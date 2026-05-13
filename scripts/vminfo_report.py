@@ -425,29 +425,34 @@ _PDF_HOST   = (52, 73, 94)        # slate — host band
 _PDF_VM     = (74, 105, 138)      # blue-grey — VM band
 _PDF_HEADER = (68, 114, 196)      # blue — table headers
 _PDF_LIGHT  = (235, 241, 250)     # light blue — alt rows
-_PDF_OK     = (198, 239, 206)     # green   — good (PVSCSI, NVMe, eagerzeroedthick)
-_PDF_WARN   = (255, 235, 156)     # yellow  — warning (LsiLogic, thick)
-_PDF_BAD    = (255, 199, 206)     # red     — bad (thin)
+_PDF_REC    = (198, 239, 206)     # soft green   — perf-recommended
+_PDF_NEU1   = (240, 240, 240)     # light grey   — neutral category 1 (thick)
+_PDF_NEU2   = (220, 233, 245)     # light blue   — neutral category 2 (thin)
 _PDF_GREY   = (220, 220, 220)     # grey separator
 
 
 def _prov_fill(prov):
+    """Return a neutral category fill for provisioning. Only eagerzeroedthick
+    gets the recommended (green) tint; thick/thin are neutral colours so the
+    report doesn't read as pass/fail."""
     p = (prov or "").lower()
     if p == "eagerzeroedthick":
-        return _PDF_OK
+        return _PDF_REC
     if p == "thick":
-        return _PDF_WARN
+        return _PDF_NEU1
     if p == "thin":
-        return _PDF_BAD
+        return _PDF_NEU2
     return None
 
 
 def _ctrl_fill(ctype):
+    """Return a neutral category fill for controller type. Only
+    ParaVirtual/NVMe gets the recommended (green) tint."""
     t = ctype or ""
     if "ParaVirtual" in t or "NVMe" in t or "NVME" in t:
-        return _PDF_OK
+        return _PDF_REC
     if "LsiLogic" in t or "BusLogic" in t:
-        return _PDF_WARN
+        return _PDF_NEU1
     return None
 
 
@@ -699,15 +704,19 @@ def _write_pdf(data, path):
             pdf.ln(3)  # gap between VMs
 
     # ── Footer note (last page) ──
-    _ensure_space(pdf, 10)
+    _ensure_space(pdf, 14)
     pdf.set_font("Helvetica", "I", 7)
     pdf.set_text_color(140, 140, 140)
     pdf.cell(0, 4,
-             "Provisioning legend: green = eagerzeroedthick, "
-             "yellow = thick, red = thin.", ln=1)
+             _ascii("Notes (informational, not pass/fail):"), ln=1)
     pdf.cell(0, 4,
-             "Controller legend: green = ParaVirtual / NVMe, "
-             "yellow = LsiLogic / BusLogic.", ln=1)
+             _ascii("  Green tint = perf-recommended choice "
+                    "(ParaVirtual/NVMe controller, eagerzeroedthick "
+                    "provisioning)."), ln=1)
+    pdf.cell(0, 4,
+             _ascii("  Other controller types and provisioning options "
+                    "are valid; they may have higher I/O latency or "
+                    "first-write cost depending on workload."), ln=1)
     pdf.set_text_color(0, 0, 0)
 
     pdf.output(path)
@@ -794,13 +803,10 @@ def _print_console_summary(data):
                 ctype = c.get("type", "")
                 attached = [d for d in disks
                             if d.get("controller_key") == c.get("key")]
-                # Visual flag
-                if "ParaVirtual" in ctype or "NVMe" in ctype.upper():
-                    marker = "[OK]  "
-                elif "LsiLogic" in ctype or "BusLogic" in ctype:
-                    marker = "[WARN]"
-                else:
-                    marker = "      "
+                # '*' marks the perf-recommended controller types
+                ctype_upper = ctype.upper()
+                marker = "*" if ("ParaVirtual" in ctype
+                                  or "NVME" in ctype_upper) else " "
                 print(f"      {marker} {c.get('label', '?'):<22}  "
                       f"{ctype:<28}  bus={c.get('bus_number', '?')}  "
                       f"sharing={c.get('sharing', 'noSharing')}  "
@@ -808,20 +814,23 @@ def _print_console_summary(data):
                 for d in sorted(attached,
                                 key=lambda x: x.get("unit_number", 0) or 0):
                     prov = d.get("provisioning", "?")
-                    prov_marker = ("[OK]  " if prov == "eagerzeroedthick"
-                                   else "[WARN]" if prov == "thick"
-                                   else "[FAIL]" if prov == "thin"
-                                   else "      ")
+                    # '*' marks the perf-recommended provisioning
+                    prov_marker = "*" if prov == "eagerzeroedthick" else " "
                     size = round(d.get("capacity_gb", 0), 1)
-                    print(f"          {prov_marker} unit={d.get('unit_number', '?'):>2}  "
+                    print(f"        {prov_marker} unit={d.get('unit_number', '?'):>2}  "
                           f"{d.get('label', '?'):<14}  "
                           f"{size:>8} GB  {prov:<18}  "
                           f"mode={d.get('disk_mode', '')}")
 
     print()
     print("=" * 110)
-    print(f"  Legend: [OK]=ParaVirtual/NVMe or eagerzeroedthick  "
-          f"[WARN]=LsiLogic or thick  [FAIL]=thin")
+    print("  Notes (informational, not pass/fail):")
+    print("    * = perf-recommended choice "
+          "(ParaVirtual/NVMe controller, eagerzeroedthick provisioning)")
+    print("    Other controller types (LsiLogic, BusLogic) and provisioning "
+          "(thick, thin) are valid")
+    print("    choices — they may have higher I/O latency or first-write "
+          "penalty depending on workload.")
     print("=" * 110)
     print()
 
