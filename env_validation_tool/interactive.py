@@ -1,4 +1,4 @@
-"""Interactive menu-driven console for the RVC env_validation_tool."""
+"""Interactive menu-driven console for the env_validation_tool."""
 
 import getpass
 import json
@@ -134,7 +134,7 @@ def _setup_connections(session):
         return False
 
     # Optional VM pattern
-    vm_pat = _ask("VM name pattern to match (e.g. rvc-ls, leave blank for all)", default="")
+    vm_pat = _ask("VM name pattern to match (substring, leave blank for all)", default="")
     session["vm_pattern"] = vm_pat
 
     print(f"\n  {_c(_GREEN, str(len(connected)) + ' host(s) connected.')}")
@@ -184,7 +184,7 @@ def _load_config_interactive(session):
         return False
 
     if not vm_pattern:
-        vm_pattern = _ask("VM name filter (e.g. rvc-ls, leave blank for all)", default="")
+        vm_pattern = _ask("VM name filter (substring, leave blank for all)", default="")
     session["vm_pattern"] = vm_pattern
 
     print(f"\n  {_c(_GREEN, str(len(connected)) + ' host(s) connected.')}")
@@ -677,7 +677,7 @@ def _full_troubleshoot(session):
 
             # Build the same full report structure that the CLI produces:
             # host_identity + cpu_details + memory_gb + storage + network +
-            # rvc_vms + validation + troubleshoot (nested)
+            # vms + validation + troubleshoot (nested)
             vm_pat = session.get("vm_pattern", "")
             host_report = discovery.collect_host_report(
                 vm_pattern=vm_pat or None,
@@ -884,7 +884,7 @@ def _build_session_from_cfg(cfg):
 
 def run_interactive(preload_cfg=None):
     """Entry point for interactive console mode."""
-    _header("RVC Environment Validation Tool — Interactive Mode")
+    _header("Hypervisor Environment Tool — Interactive Mode")
 
     session = {
         "esxi_ips": [],

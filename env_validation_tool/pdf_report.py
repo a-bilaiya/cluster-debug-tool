@@ -57,7 +57,7 @@ class _ReportPDF(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 10)
         self.set_text_color(*_DARK)
-        self.cell(0, 6, "RVC Environment Validation Report", ln=True)
+        self.cell(0, 6, "Hypervisor Environment Report", ln=True)
         self.set_font("Helvetica", "", 8)
         self.cell(0, 4, f"Cluster: {self.cluster_name}", ln=True)
         self.line(self.l_margin, self.get_y() + 1,
@@ -318,7 +318,7 @@ def generate_troubleshoot_pdf(cluster_report, output_path):
     pdf.add_page()
 
     # Title
-    pdf.section_title("RVC Troubleshoot Report")
+    pdf.section_title("Cluster Troubleshoot Report")
     pdf.set_font("Helvetica", "", 9)
     vcenter = cluster_report.get("vcenter", "N/A")
     ts = cluster_report.get("collection_time", "N/A")

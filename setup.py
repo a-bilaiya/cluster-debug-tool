@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="env_validation_tool",
     version="1.0.1",
-    description="RVC Environment Validation Tool — validate ESXi hosts for Rubrik Virtual Cluster deployment",
+    description="Hypervisor Environment Validation & Troubleshoot Tool — collect ESXi/vCenter diagnostics and validate host hardware",
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[

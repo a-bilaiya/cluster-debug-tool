@@ -1,5 +1,8 @@
-"""RVC Environment Validation Tool — a library for validating hypervisor
-host hardware against Rubrik Virtual Cluster (RVC) minimum requirements.
+"""Hypervisor Environment Validation & Troubleshoot Tool.
+
+A library for collecting hypervisor host diagnostics (ESXi alarms, tasks,
+performance, storage, network, VM details) and optionally validating
+hardware against deployment-specific minimum requirements.
 
 Usage as CLI:
     python -m env_validation_tool --vcenter 10.4.111.202 ...

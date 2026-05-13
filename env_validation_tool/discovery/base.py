@@ -124,10 +124,10 @@ class HypervisorDiscovery(ABC):
             )
 
         if vm_pattern:
-            report["rvc_vms"] = self.discover_vms(
+            report["vms"] = self.discover_vms(
                 vm_pattern, vm_exclude or []
             )
         else:
-            report["rvc_vms"] = []
+            report["vms"] = []
 
         return report

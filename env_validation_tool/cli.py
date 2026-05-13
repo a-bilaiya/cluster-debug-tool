@@ -118,8 +118,8 @@ def build_parser():
 
     parser = argparse.ArgumentParser(
         prog="env_validation_tool",
-        description="RVC Environment Validation Tool — validate hypervisor "
-                    "host hardware for Rubrik Virtual Cluster deployment.",
+        description="Hypervisor Environment Validation & Troubleshoot Tool — "
+                    "collect ESXi/vCenter diagnostics and validate host hardware.",
         epilog=epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -163,7 +163,7 @@ def build_parser():
                                "troubleshoot"],
                       help="Validation mode (default: full)")
     disc.add_argument("--vm-pattern", default=None,
-                      help="Substring pattern to identify RVC VMs "
+                      help="Substring pattern to identify target VMs "
                            "(default: vc-vr7400)")
     disc.add_argument("--vm-exclude", default=None,
                       help="Comma-separated patterns to exclude from VM match")
@@ -178,9 +178,9 @@ def build_parser():
     # Network / iperf
     net = parser.add_argument_group("Network Tests (post-deploy)")
     net.add_argument("--ssh-key", metavar="PATH",
-                     help="Path to SSH private key for edge VM access")
+                     help="Path to SSH private key for VM access")
     net.add_argument("--ssh-user", default=None,
-                     help="SSH username for edge VMs (default: ubuntu)")
+                     help="SSH username for VMs (default: ubuntu)")
     net.add_argument("--iperf-duration", type=int, default=None,
                      help="iperf3 test duration in seconds (default: 10)")
     net.add_argument("--iperf-streams", type=int, default=None,
@@ -212,8 +212,8 @@ _SUBCOMMANDS = {
 }
 
 _USAGE_TEXT = """\
-RVC Environment Validation Tool
-================================
+Hypervisor Environment Validation & Troubleshoot Tool
+=====================================================
 
 SUBCOMMANDS (quick one-shot checks):
   -c config.yaml is optional for all subcommands.
@@ -281,7 +281,7 @@ def _prompt_if_missing(cfg, host_override=None):
 
     vm_pattern = cfg.get("vm_pattern", "")
     if not vm_pattern:
-        vm_pattern = input("  VM name filter (e.g. rvc-ls, leave blank for all): ").strip()
+        vm_pattern = input("  VM name filter (substring, leave blank for all): ").strip()
 
     return esxi_ips, user, password, vm_pattern
 
@@ -475,7 +475,7 @@ def main(argv=None):
 
     if "--version" in raw_argv or "-V" in raw_argv:
         from . import __version__
-        print(f"RVC Cluster Debug Tool v{__version__}")
+        print(f"Cluster Debug Tool v{__version__}")
         return 0
 
     # ── Subcommand pre-check ──
@@ -602,9 +602,9 @@ def main(argv=None):
             report["validation"] = validate_requirements(report)
 
             tag = report["host_identity"]["service_tag"]
-            vms = report.get("rvc_vms", [])
+            vms = report.get("vms", [])
             vm_names = [v["vm_name"] for v in vms]
-            print(f"  Tag={tag}  RVC VMs found: {vm_names}")
+            print(f"  Tag={tag}  Matched VMs: {vm_names}")
             print_validation_summary(report["validation"])
 
             # Troubleshoot: collect runtime diagnostics while still connected
@@ -624,7 +624,7 @@ def main(argv=None):
                       f"Alarms={alarms.get('total_count', 0)}  "
                       f"Sensors={health.get('summary', {}).get('total', 0)}")
 
-                # Validate RVC VMs against RVCLS spec
+                # Validate matched VMs against deployment spec
                 vm_details = ts.get("vm_details", {})
                 cpu_alloc = ts.get("cpu_allocation", {})
                 mem_alloc = ts.get("memory_allocation", {})
@@ -632,10 +632,10 @@ def main(argv=None):
                               for v in cpu_alloc.get("per_vm", [])}
                 mem_per_vm = {v["vm_name"]: v
                               for v in mem_alloc.get("per_vm", [])}
-                rvc_vm_checks = []
+                vm_check_list = []
                 for vm in vm_details.get("vms", []):
                     vm_name = vm.get("vm_name", "")
-                    # Only validate VMs matching the RVC pattern
+                    # Only validate VMs matching the configured pattern
                     if (args.vm_pattern
                             and args.vm_pattern.lower()
                             in vm_name.lower()):
@@ -644,7 +644,7 @@ def main(argv=None):
                             cpu_alloc_vm=cpu_per_vm.get(vm_name),
                             mem_alloc_vm=mem_per_vm.get(vm_name),
                         )
-                        rvc_vm_checks.append(result_vm)
+                        vm_check_list.append(result_vm)
                         # Print VM validation
                         fails = [c for c in result_vm["checks"]
                                  if c["status"] == "FAIL"]
@@ -654,14 +654,14 @@ def main(argv=None):
                                    else f"{len(fails)} FAIL")
                         if warns:
                             tag_str += f", {len(warns)} warn"
-                        print(f"\n  RVC VM: {vm_name} — {tag_str}")
+                        print(f"\n  VM: {vm_name} — {tag_str}")
                         for c in result_vm["checks"]:
                             icon = {"PASS": "OK", "FAIL": "FAIL",
                                     "WARN": "WARN"}[c["status"]]
                             print(f"    [{icon:4s}] "
                                   f"{c['check']:30s} {c['actual']}")
-                if rvc_vm_checks:
-                    report["rvc_vm_validation"] = rvc_vm_checks
+                if vm_check_list:
+                    report["vm_validation"] = vm_check_list
 
             cluster_report["hosts"].append(report)
         except Exception as e:
@@ -684,7 +684,7 @@ def main(argv=None):
             if host_report.get("status") == "error":
                 continue
             tag = host_report["host_identity"]["service_tag"]
-            for vm in host_report.get("rvc_vms", []):
+            for vm in host_report.get("vms", []):
                 if vm["vm_ip"] and vm["power_state"] == "poweredOn":
                     result = run_network_perf_suite(
                         vm["vm_name"], vm["vm_ip"], tag,
@@ -706,7 +706,7 @@ def main(argv=None):
             for host_report in cluster_report["hosts"]:
                 if host_report.get("status") == "error":
                     continue
-                for vm in host_report.get("rvc_vms", []):
+                for vm in host_report.get("vms", []):
                     if vm["vm_ip"] and vm["power_state"] == "poweredOn":
                         iperf_nodes.append({
                             "vm_name": vm["vm_name"],
@@ -723,7 +723,7 @@ def main(argv=None):
                 )
                 cluster_report["iperf_bandwidth"] = iperf_results
             else:
-                print("\n  [WARN] No powered-on RVC VMs with IPs -- "
+                print("\n  [WARN] No powered-on VMs with IPs -- "
                       "skipping iperf tests.")
         else:
             print("\n  [INFO] No --ssh-key provided -- skipping iperf tests.")

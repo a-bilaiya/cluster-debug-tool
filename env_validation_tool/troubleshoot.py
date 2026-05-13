@@ -1,4 +1,4 @@
-"""RVC Troubleshoot data collection — runtime diagnostics via pyVmomi.
+"""Troubleshoot data collection — runtime diagnostics via pyVmomi.
 
 Collects the same information visible in the vSphere UI:
   1. Host state & uptime

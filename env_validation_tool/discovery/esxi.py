@@ -200,7 +200,7 @@ class ESXiDiscovery(HypervisorDiscovery):
     def discover_vms(self, pattern, exclude_patterns=None):
         if exclude_patterns is None:
             exclude_patterns = []
-        rvc_vms = []
+        matched_vms = []
         for vm in self._host.vm:
             name_lower = vm.name.lower()
             is_excluded = any(
@@ -218,7 +218,7 @@ class ESXiDiscovery(HypervisorDiscovery):
                                 break
                         if guest_ip:
                             break
-                rvc_vms.append({
+                matched_vms.append({
                     "vm_name": vm.name,
                     "vm_ip": guest_ip,
                     "power_state": str(vm.runtime.powerState),
@@ -229,7 +229,7 @@ class ESXiDiscovery(HypervisorDiscovery):
                         vm.config.hardware.memoryMB if vm.config else None
                     ),
                 })
-        return rvc_vms
+        return matched_vms
 
 
 # ── vCenter Discovery (standalone function, not per-host) ──

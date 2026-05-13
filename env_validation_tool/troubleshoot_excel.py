@@ -110,7 +110,7 @@ def _sheet_executive_summary(wb, cluster_report):
     # ── Section 1: Report Info ──
     row = _section_header(ws, row, "Report Info")
     kv1 = [
-        ("Tool", f"RVC Cluster Debug Tool v{__version__}"),
+        ("Tool", f"Cluster Debug Tool v{__version__}"),
         ("Generated", timestamp),
         ("Customer", cluster_report.get("customer_name", "") or "—"),
         ("Cluster", cluster_report.get("cluster_name", "") or cluster_report.get("cluster", "") or "—"),
@@ -142,8 +142,8 @@ def _sheet_executive_summary(wb, cluster_report):
             elif st == "YELLOW":
                 total_yellow += 1
 
-        # Count FAILs and WARNs from rvc_vm_validation
-        for vm_check in hr.get("rvc_vm_validation", []):
+        # Count FAILs and WARNs from vm_validation
+        for vm_check in hr.get("vm_validation", []):
             for chk in vm_check.get("checks", []):
                 st = str(chk.get("status", ""))
                 if st == "FAIL":
@@ -201,7 +201,7 @@ def _sheet_executive_summary(wb, cluster_report):
                     "actual": str(chk.get("value", chk.get("detail", ""))),
                 })
 
-        for vm_check in hr.get("rvc_vm_validation", []):
+        for vm_check in hr.get("vm_validation", []):
             vm_name = vm_check.get("vm_name", "")
             for chk in vm_check.get("checks", []):
                 st = str(chk.get("status", ""))
@@ -249,15 +249,15 @@ def _sheet_executive_summary(wb, cluster_report):
 
     row += 1
 
-    # ── Section 4: How to Share with Rubrik Support ──
-    row = _section_header(ws, row, "How to Share with Rubrik Support")
+    # ── Section 4: How to Share Report ──
+    row = _section_header(ws, row, "How to Share This Report")
     support_lines = [
-        ("", "To share this report with Rubrik Support:"),
+        ("", "To share this report with the support team:"),
         ("1.", "Attach these files to your support case:"),
         ("", "    report.xlsx   (this file)"),
         ("", "    report.json   (raw data)"),
         ("", "    report.pdf    (summary)"),
-        ("2.", "Include your Rubrik cluster serial number and software version."),
+        ("2.", "Include your cluster identifier and software version."),
         ("3.", "Describe the symptoms you are experiencing."),
     ]
     for key, val in support_lines:

@@ -1,4 +1,4 @@
-"""PyInstaller entry point for RVC Cluster Debug Tool.
+"""PyInstaller entry point for Cluster Debug Tool.
 
 On Windows, when launched by double-click, the console window normally closes
 immediately on exit (success or error). This wrapper keeps the window open so

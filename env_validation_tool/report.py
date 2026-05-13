@@ -8,7 +8,7 @@ All functions print to stdout. The JSON report is produced by the caller
 def print_validation_summary(checks):
     """Pretty-print per-host validation results."""
     print("\n" + "=" * 70)
-    print("  RVC EDGE VM - ENVIRONMENT VALIDATION RESULTS")
+    print("  HOST HARDWARE VALIDATION RESULTS")
     print("=" * 70)
 
     fail_count = 0
@@ -36,7 +36,7 @@ def print_validation_summary(checks):
 def print_network_summary(net_results):
     """Pretty-print Phase 2 network performance results."""
     print("\n" + "=" * 70)
-    print("  RVC CLUSTER - NETWORK PERFORMANCE RESULTS")
+    print("  CLUSTER - NETWORK PERFORMANCE RESULTS")
     print("=" * 70)
 
     for nr in net_results:
@@ -86,7 +86,7 @@ def print_network_summary(net_results):
 def print_iperf_summary(iperf_results):
     """Pretty-print Phase 3 iperf3 bandwidth results."""
     print("\n" + "=" * 78)
-    print("  RVC CLUSTER -- iperf3 BANDWIDTH TEST RESULTS")
+    print("  CLUSTER -- iperf3 BANDWIDTH TEST RESULTS")
     print("=" * 78)
 
     for r in iperf_results.get("devvm_node", []):
@@ -156,7 +156,7 @@ def print_quick_summary_table(cluster_report, net_results=None,
                               iperf_results=None):
     """Print the cluster quick summary table."""
     print("\n" + "=" * 120)
-    print("  RVC CLUSTER QUALIFICATION -- QUICK SUMMARY")
+    print("  CLUSTER QUALIFICATION -- QUICK SUMMARY")
     print("=" * 120)
     cluster_name = cluster_report.get("cluster", "?")
     vcenter = cluster_report.get("vcenter", "?")
@@ -204,7 +204,7 @@ def print_quick_summary_table(cluster_report, net_results=None,
         sse42 = "Y" if feat.get("sse4_2") else "N"
         avx2 = "Y" if feat.get("avx2") else "N"
 
-        vms = host_report.get("rvc_vms", [])
+        vms = host_report.get("vms", [])
         vm_ip = vms[0]["vm_ip"] if vms and vms[0].get("vm_ip") else "—"
 
         ping_str = "—"

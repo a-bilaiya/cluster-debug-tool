@@ -1,7 +1,7 @@
 """Network performance tests: ping, TCP throughput, HTTPS response, iperf3.
 
 These tests are hypervisor-agnostic — they run from the tool host to
-RVC Edge VMs via standard protocols (ICMP, TCP, SSH).
+target VMs via standard protocols (ICMP, TCP, SSH).
 """
 
 import json

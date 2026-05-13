@@ -111,7 +111,7 @@ def _resolve_inputs(args):
     vm_pattern = args.vm_pattern or cfg.get("vm_pattern", "")
     if not vm_pattern:
         vm_pattern = input(
-            "  VM name filter (e.g. rvc-ls, leave blank for all): "
+            "  VM name filter (substring, leave blank for all): "
         ).strip()
 
     customer = args.customer or cfg.get("customer", "")
@@ -219,7 +219,7 @@ def _write_excel(data, path):
     ws.cell(row=row, column=1, value="VM Hardware Info Report").font = Font(bold=True, size=14)
     row += 1
     for label, value in [
-        ("Tool",       f"RVC Cluster Debug Tool — vminfo_report v{__version__}"),
+        ("Tool",       f"Cluster Debug Tool — vminfo_report v{__version__}"),
         ("Generated",  data.get("generated", "")),
         ("Customer",   data.get("customer", "—") or "—"),
         ("Hosts",      ", ".join(h["esxi_ip"] for h in data["hosts"])),
@@ -395,7 +395,7 @@ def _write_pdf(data, path):
 
     # Report metadata
     pdf.set_font("Helvetica", size=10)
-    pdf.cell(0, 6, f"Tool       : RVC Cluster Debug Tool v{__version__}", ln=1)
+    pdf.cell(0, 6, f"Tool       : Cluster Debug Tool v{__version__}", ln=1)
     pdf.cell(0, 6, f"Generated  : {data.get('generated', '')}", ln=1)
     pdf.cell(0, 6, f"Customer   : {data.get('customer','') or '-'}", ln=1)
     pdf.cell(0, 6, f"Hosts      : {', '.join(h['esxi_ip'] for h in data['hosts'])}", ln=1)
@@ -566,7 +566,7 @@ def main():
     print(f"  >>> ZIP bundle ready: {zip_path}")
     print(f"      ({size_mb:.2f} MB — contains JSON, PDF, and Excel)")
     print()
-    print("  Share this ZIP file with Rubrik Support.")
+    print("  Share this ZIP file with the support team.")
 
 
 def _should_pause(argv):
