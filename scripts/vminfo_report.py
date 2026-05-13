@@ -384,54 +384,174 @@ def _write_excel(data, path):
     wb.save(path)
 
 
+# ── PDF colour palette ──
+_PDF_DARK   = (44, 62, 80)        # navy — primary headings
+_PDF_HOST   = (52, 73, 94)        # slate — host band
+_PDF_VM     = (74, 105, 138)      # blue-grey — VM band
+_PDF_HEADER = (68, 114, 196)      # blue — table headers
+_PDF_LIGHT  = (235, 241, 250)     # light blue — alt rows
+_PDF_OK     = (198, 239, 206)     # green   — good (PVSCSI, NVMe, eagerzeroedthick)
+_PDF_WARN   = (255, 235, 156)     # yellow  — warning (LsiLogic, thick)
+_PDF_BAD    = (255, 199, 206)     # red     — bad (thin)
+_PDF_GREY   = (220, 220, 220)     # grey separator
+
+
+def _prov_fill(prov):
+    p = (prov or "").lower()
+    if p == "eagerzeroedthick":
+        return _PDF_OK
+    if p == "thick":
+        return _PDF_WARN
+    if p == "thin":
+        return _PDF_BAD
+    return None
+
+
+def _ctrl_fill(ctype):
+    t = ctype or ""
+    if "ParaVirtual" in t or "NVMe" in t or "NVME" in t:
+        return _PDF_OK
+    if "LsiLogic" in t or "BusLogic" in t:
+        return _PDF_WARN
+    return None
+
+
+def _table_row(pdf, widths, values, fills=None, header=False, line_h=5):
+    """Draw a fixed-width table row with optional per-cell fills."""
+    if header:
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_fill_color(*_PDF_HEADER)
+        for w, v in zip(widths, values):
+            pdf.cell(w, line_h, str(v), border=1, align="L", fill=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(line_h)
+        return
+
+    pdf.set_font("Helvetica", size=8)
+    for i, (w, v) in enumerate(zip(widths, values)):
+        cell_fill = None
+        if fills and i < len(fills):
+            cell_fill = fills[i]
+        if cell_fill:
+            pdf.set_fill_color(*cell_fill)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        pdf.cell(w, line_h, str(v), border=1, align="L", fill=True)
+    pdf.ln(line_h)
+
+
+def _section_band(pdf, text, color, height=7, font_size=11):
+    """Coloured band heading."""
+    pdf.set_font("Helvetica", "B", font_size)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_fill_color(*color)
+    pdf.cell(0, height, f"  {text}", ln=1, fill=True)
+    pdf.set_text_color(0, 0, 0)
+
+
+def _kv_box(pdf, items, col_w_label=42, col_w_val=130, line_h=5):
+    """Two-column key/value list with light-grey separators."""
+    pdf.set_font("Helvetica", size=9)
+    for i, (label, val) in enumerate(items):
+        if i % 2 == 0:
+            pdf.set_fill_color(*_PDF_LIGHT)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(col_w_label, line_h, f" {label}", border=0, fill=True)
+        pdf.set_font("Helvetica", size=9)
+        pdf.cell(col_w_val, line_h, f" {val}", border=0, ln=1, fill=True)
+
+
+def _ensure_space(pdf, needed_mm):
+    """Add a new page if there's not enough vertical space remaining."""
+    if pdf.get_y() + needed_mm > pdf.h - pdf.b_margin:
+        pdf.add_page()
+
+
 def _write_pdf(data, path):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(left=12, top=12, right=12)
     pdf.add_page()
 
-    # Title
-    pdf.set_font("Helvetica", "B", 16)
+    # ── Title block ──
+    pdf.set_text_color(*_PDF_DARK)
+    pdf.set_font("Helvetica", "B", 18)
     pdf.cell(0, 10, "VM Hardware Info Report", ln=1)
+    pdf.set_font("Helvetica", size=9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 5,
+             f"Generated: {data.get('generated', '')}    "
+             f"|    Tool: Cluster Debug Tool v{__version__}",
+             ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
 
-    # Report metadata
-    pdf.set_font("Helvetica", size=10)
-    pdf.cell(0, 6, f"Tool       : Cluster Debug Tool v{__version__}", ln=1)
-    pdf.cell(0, 6, f"Generated  : {data.get('generated', '')}", ln=1)
-    pdf.cell(0, 6, f"Customer   : {data.get('customer','') or '-'}", ln=1)
-    pdf.cell(0, 6, f"Hosts      : {', '.join(h['esxi_ip'] for h in data['hosts'])}", ln=1)
-    pdf.cell(0, 6, f"Total VMs  : {sum(len(h.get('vms', [])) for h in data['hosts'])}", ln=1)
+    # ── Report-level summary box ──
+    total_vms     = sum(len(h.get("vms", [])) for h in data["hosts"])
+    total_powered = sum(1 for h in data["hosts"] for v in h.get("vms", [])
+                        if v.get("power_state") == "poweredOn")
+    summary_items = [
+        ("Customer",       data.get("customer", "") or "—"),
+        ("Hosts Scanned",  len(data["hosts"])),
+        ("Total VMs",      total_vms),
+        ("Powered On",     f"{total_powered} of {total_vms}"),
+        ("VM Filter",      data.get("vm_filter", "all")),
+        ("Hosts",          ", ".join(h["esxi_ip"] for h in data["hosts"])),
+    ]
+    _kv_box(pdf, summary_items)
     pdf.ln(4)
 
+    # ── Per-host section ──
     for host in data["hosts"]:
-        if pdf.get_y() > 250:
-            pdf.add_page()
-        pdf.set_font("Helvetica", "B", 13)
-        pdf.set_fill_color(217, 225, 242)
-        pdf.cell(0, 8, f"Host {host['esxi_ip']}  ({host['model']})", ln=1, fill=True)
-        pdf.set_font("Helvetica", size=9)
-        pdf.cell(0, 5, f"  ESXi: {host['esxi_full']}", ln=1)
-        pdf.cell(0, 5, f"  CPU : {host['cpu_model']}  ({host['cpu_cores']}C/{host['cpu_threads']}T @ {host['cpu_mhz']} MHz)", ln=1)
-        pdf.cell(0, 5, f"  RAM : {host['memory_gb']} GB", ln=1)
-        pdf.ln(2)
+        _ensure_space(pdf, 50)
 
+        # Host band + spec
+        _section_band(pdf, f"Host  {host['esxi_ip']}    {host['model']}",
+                      _PDF_HOST, height=8, font_size=12)
+        host_kv = [
+            ("ESXi",   f"{host['esxi_full']}  (build {host['esxi_build']})"),
+            ("Vendor", host['vendor']),
+            ("CPU",    f"{host['cpu_model']}  ({host['cpu_cores']}C / "
+                       f"{host['cpu_threads']}T  @  {host['cpu_mhz']} MHz)"),
+            ("Memory", f"{host['memory_gb']} GB"),
+            ("VMs on host", len(host.get("vms", []))),
+        ]
+        _kv_box(pdf, host_kv)
+        pdf.ln(3)
+
+        # Per-VM blocks
         for vm in host.get("vms", []):
-            if pdf.get_y() > 250:
-                pdf.add_page()
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.cell(0, 6, f"VM: {vm.get('vm_name','?')}  [{vm.get('power_state','?')}]", ln=1)
-            pdf.set_font("Helvetica", size=9)
-            for label, value in [
-                ("VM Version",         vm.get("vm_version", "?")),
-                ("Guest OS",           vm.get("guest_os", "?")),
-                ("Guest IP",           vm.get("guest_ip", "") or "-"),
-                ("VMware Tools",       vm.get("tools_status", "?")),
-                ("vCPUs",              vm.get("num_cpu", "?")),
-                ("Memory",             f"{round(vm.get('memory_mb', 0)/1024, 1)} GB"),
-                ("CPU Reservation",    f"{vm.get('cpu_reservation_mhz', 0)} MHz"),
-                ("Memory Reservation", f"{vm.get('mem_reservation_mb', 0)} MB"),
-            ]:
-                pdf.cell(0, 5, f"   {label:<22} : {value}", ln=1)
+            _ensure_space(pdf, 60)
 
+            vm_name  = vm.get("vm_name", "?")
+            power    = vm.get("power_state", "?")
+            _section_band(pdf, f"VM  {vm_name}    [{power}]",
+                          _PDF_VM, height=7, font_size=10)
+
+            vm_kv = [
+                ("Hardware Version",  vm.get("vm_version", "?")),
+                ("Guest OS",          vm.get("guest_os", "?")),
+                ("Guest IP",          vm.get("guest_ip", "") or "—"),
+                ("Hostname",          vm.get("guest_hostname", "") or "—"),
+                ("VMware Tools",      vm.get("tools_status", "?")),
+                ("vCPU",              vm.get("num_cpu", "?")),
+                ("Memory",            f"{round(vm.get('memory_mb', 0)/1024, 1)} GB "
+                                       f"({vm.get('memory_mb', 0)} MB)"),
+                ("CPU Reservation",   f"{vm.get('cpu_reservation_mhz', 0)} MHz "
+                                       f"({round(vm.get('cpu_reservation_mhz', 0)/1000, 2)} GHz)"),
+                ("CPU Limit",         "Unlimited"
+                                       if vm.get("cpu_limit_mhz") == -1
+                                       else f"{vm.get('cpu_limit_mhz')} MHz"),
+                ("Memory Reservation",
+                                      f"{vm.get('mem_reservation_mb', 0)} MB"),
+            ]
+            _kv_box(pdf, vm_kv, col_w_label=42, col_w_val=130)
+            pdf.ln(2)
+
+            # Storage controllers + disks
             disks = vm.get("disks", [])
             controllers = vm.get("controllers", [])
             ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
@@ -439,68 +559,236 @@ def _write_pdf(data, path):
             storage_ctrls = [c for c in controllers
                              if any(k in c.get("type", "") for k in ctype_keywords)]
 
-            # Storage Controllers section — disks nested under their controller
             if storage_ctrls:
+                _ensure_space(pdf, 25)
                 pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(0, 5, f"   Storage Controllers ({len(storage_ctrls)})", ln=1)
+                pdf.set_text_color(*_PDF_DARK)
+                pdf.cell(0, 5,
+                         f"  Storage Controllers ({len(storage_ctrls)})", ln=1)
+                pdf.set_text_color(0, 0, 0)
+
                 for c in storage_ctrls:
-                    if pdf.get_y() > 260:
-                        pdf.add_page()
+                    _ensure_space(pdf, 18)
+                    ctype = c.get("type", "")
+                    fill  = _ctrl_fill(ctype) or _PDF_GREY
+
                     pdf.set_font("Helvetica", "B", 9)
-                    pdf.cell(0, 5,
-                             f"      {c.get('label','?')}  "
-                             f"[{c.get('type','')}]  "
-                             f"bus={c.get('bus_number','?')}  "
-                             f"sharing={c.get('sharing','')}", ln=1)
+                    pdf.set_fill_color(*fill)
+                    label = (f"   {c.get('label', '?')}    "
+                             f"[{ctype}]    "
+                             f"bus={c.get('bus_number', '?')}    "
+                             f"sharing={c.get('sharing', 'noSharing')}")
+                    pdf.cell(0, 5, label, ln=1, fill=True)
 
-                    # Disks attached to this controller
-                    attached = [d for d in disks if d.get("controller_key") == c.get("key")]
+                    attached = [d for d in disks
+                                if d.get("controller_key") == c.get("key")]
                     if attached:
-                        pdf.set_font("Helvetica", size=8)
-                        pdf.cell(0, 4,
-                                 f"        {'Label':<20} {'Unit':>5}  {'Size':>10}  "
-                                 f"{'Provisioning':<20}  {'Mode'}", ln=1)
-                        for d in sorted(attached, key=lambda x: x.get("unit_number", 0) or 0):
-                            pdf.cell(0, 4,
-                                     f"        {d.get('label','?'):<20} "
-                                     f"{str(d.get('unit_number','?')):>5}  "
-                                     f"{round(d.get('capacity_gb',0),1)} GB  "
-                                     f"{d.get('provisioning','?'):<20}  "
-                                     f"{d.get('disk_mode','')}", ln=1)
+                        widths = [12, 30, 12, 22, 32, 22, 42]
+                        _table_row(pdf, widths,
+                                   ["#", "Label", "Unit", "Size",
+                                    "Provisioning", "Mode", "Datastore"],
+                                   header=True)
+                        for idx, d in enumerate(
+                                sorted(attached,
+                                       key=lambda x: x.get("unit_number", 0) or 0),
+                                start=1):
+                            prov = d.get("provisioning", "?")
+                            backing = d.get("backing_file", "")
+                            ds = ""
+                            if backing.startswith("["):
+                                ds = backing.split("]")[0].strip("[")
+                            row_fills = [None, None, None, None,
+                                         _prov_fill(prov), None, None]
+                            _table_row(pdf, widths, [
+                                idx,
+                                (d.get("label", "") or "")[:24],
+                                d.get("unit_number", "") if d.get("unit_number") is not None else "",
+                                f"{round(d.get('capacity_gb', 0), 1)} GB",
+                                prov,
+                                d.get("disk_mode", ""),
+                                ds[:30],
+                            ], fills=row_fills)
                     else:
-                        pdf.set_font("Helvetica", size=8)
-                        pdf.cell(0, 4, "        (no disks attached)", ln=1)
+                        pdf.set_font("Helvetica", "I", 8)
+                        pdf.cell(0, 4, "      (no disks attached)", ln=1)
+                    pdf.ln(1)
 
-            # Orphan disks (none of the storage controllers we picked up own them)
+            # Orphan disks (controller wasn't in storage list)
             attached_keys = {c.get("key") for c in storage_ctrls}
-            orphan_disks = [d for d in disks if d.get("controller_key") not in attached_keys]
+            orphan_disks = [d for d in disks
+                            if d.get("controller_key") not in attached_keys]
             if orphan_disks:
+                _ensure_space(pdf, 15)
                 pdf.set_font("Helvetica", "B", 9)
                 pdf.cell(0, 5,
-                         f"   Other Disks (controller not detected)  ({len(orphan_disks)})",
-                         ln=1)
-                pdf.set_font("Helvetica", size=8)
-                for d in orphan_disks:
-                    pdf.cell(0, 4,
-                             f"      {d.get('label','?'):<20}  "
-                             f"{round(d.get('capacity_gb',0),1)} GB  "
-                             f"{d.get('provisioning','?')}", ln=1)
+                         f"  Other Disks  ({len(orphan_disks)})", ln=1)
+                widths = [12, 38, 22, 32, 22, 60]
+                _table_row(pdf, widths,
+                           ["#", "Label", "Size", "Provisioning",
+                            "Mode", "Backing"],
+                           header=True)
+                for idx, d in enumerate(orphan_disks, start=1):
+                    prov = d.get("provisioning", "?")
+                    _table_row(pdf, widths, [
+                        idx,
+                        (d.get("label", "") or "")[:30],
+                        f"{round(d.get('capacity_gb', 0), 1)} GB",
+                        prov,
+                        d.get("disk_mode", ""),
+                        (d.get("backing_file", "") or "")[:48],
+                    ], fills=[None, None, None, _prov_fill(prov), None, None])
+                pdf.ln(1)
 
             # NICs
             nics = vm.get("nics", [])
             if nics:
+                _ensure_space(pdf, 15)
                 pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(0, 5, f"   NICs ({len(nics)})", ln=1)
-                pdf.set_font("Helvetica", size=8)
-                for n in nics:
-                    pdf.cell(0, 4,
-                             f"      {n.get('label','?'):<22}  "
-                             f"{n.get('type',''):<22}  "
-                             f"{n.get('network','')}  "
-                             f"({n.get('mac','')})", ln=1)
-            pdf.ln(2)
+                pdf.cell(0, 5, f"  Network Adapters ({len(nics)})", ln=1)
+                widths = [12, 38, 38, 50, 30, 18]
+                _table_row(pdf, widths,
+                           ["#", "Label", "Type", "Network",
+                            "MAC", "Connected"],
+                           header=True)
+                for idx, n in enumerate(nics, start=1):
+                    _table_row(pdf, widths, [
+                        idx,
+                        (n.get("label", "") or "")[:30],
+                        (n.get("type", "") or "")[:30],
+                        (n.get("network", "") or "")[:38],
+                        n.get("mac", ""),
+                        "Yes" if n.get("connected") else "No",
+                    ])
+                pdf.ln(1)
+
+            pdf.ln(3)  # gap between VMs
+
+    # ── Footer note (last page) ──
+    _ensure_space(pdf, 10)
+    pdf.set_font("Helvetica", "I", 7)
+    pdf.set_text_color(140, 140, 140)
+    pdf.cell(0, 4,
+             "Provisioning legend: green = eagerzeroedthick, "
+             "yellow = thick, red = thin.", ln=1)
+    pdf.cell(0, 4,
+             "Controller legend: green = ParaVirtual / NVMe, "
+             "yellow = LsiLogic / BusLogic.", ln=1)
+    pdf.set_text_color(0, 0, 0)
 
     pdf.output(path)
+
+
+# ── Console summary ──
+
+def _print_console_summary(data):
+    """Print a human-readable VM summary to stdout before files are written."""
+    hosts = data.get("hosts", [])
+    total_vms     = sum(len(h.get("vms", [])) for h in hosts)
+    total_powered = sum(1 for h in hosts for v in h.get("vms", [])
+                        if v.get("power_state") == "poweredOn")
+
+    print()
+    print("=" * 110)
+    print("  VM HARDWARE INFO SUMMARY")
+    print("=" * 110)
+    print(f"  Generated  : {data.get('generated', '')}")
+    print(f"  Customer   : {data.get('customer', '') or '—'}")
+    print(f"  VM Filter  : {data.get('vm_filter', 'all')}")
+    print(f"  Hosts      : {len(hosts)}    "
+          f"VMs: {total_vms}    "
+          f"Powered On: {total_powered}/{total_vms}")
+    print("=" * 110)
+
+    for host in hosts:
+        ip    = host.get("esxi_ip", "?")
+        model = host.get("model", "?")
+        cpu   = host.get("cpu_model", "?")
+        cores = host.get("cpu_cores", "?")
+        thr   = host.get("cpu_threads", "?")
+        mhz   = host.get("cpu_mhz", "?")
+        ram   = host.get("memory_gb", "?")
+        vms   = host.get("vms", [])
+
+        print()
+        print(f"  Host  {ip}    {model}")
+        print("  " + "-" * 108)
+        print(f"    ESXi     : {host.get('esxi_full', '?')}")
+        print(f"    CPU      : {cpu}  ({cores}C / {thr}T  @  {mhz} MHz)")
+        print(f"    Memory   : {ram} GB")
+        print(f"    VMs      : {len(vms)}")
+
+        if not vms:
+            print("    (no VMs matched)")
+            continue
+
+        # Per-VM compact lines
+        print()
+        print(f"    {'VM Name':<42} {'State':<5} {'vCPU':>4} "
+              f"{'RAM(GB)':>8} {'Disks':>6} {'NICs':>5} "
+              f"{'CPU Resv':>10} {'IP'}")
+        print("    " + "-" * 104)
+        for vm in vms:
+            name   = (vm.get("vm_name", "?") or "?")[:42]
+            power  = vm.get("power_state", "?").replace("poweredOn", "On") \
+                                              .replace("poweredOff", "Off") \
+                                              .replace("suspended", "Susp")
+            vcpu   = vm.get("num_cpu", "?")
+            ram_gb = round(vm.get("memory_mb", 0) / 1024, 1) if vm.get("memory_mb") else 0
+            disks  = len(vm.get("disks", []))
+            nics   = len(vm.get("nics", []))
+            cpu_re = vm.get("cpu_reservation_mhz", 0)
+            cpu_re_str = (f"{round(cpu_re / 1000, 1)} GHz"
+                          if cpu_re else "0")
+            ip     = vm.get("guest_ip", "") or "—"
+            print(f"    {name:<42} {power:<5} {vcpu:>4} "
+                  f"{ram_gb:>8} {disks:>6} {nics:>5} "
+                  f"{cpu_re_str:>10} {ip}")
+
+        # Disk-controller breakdown
+        ctype_keywords = ("LsiLogic", "BusLogic", "ParaVirtual", "SCSI",
+                          "AHCI", "SATA", "NVMe", "NVME", "USB")
+        for vm in vms:
+            ctrls = [c for c in vm.get("controllers", [])
+                     if any(k in c.get("type", "") for k in ctype_keywords)]
+            if not ctrls:
+                continue
+            disks = vm.get("disks", [])
+            print()
+            print(f"    Storage layout — {vm.get('vm_name', '?')}")
+            for c in ctrls:
+                ctype = c.get("type", "")
+                attached = [d for d in disks
+                            if d.get("controller_key") == c.get("key")]
+                # Visual flag
+                if "ParaVirtual" in ctype or "NVMe" in ctype.upper():
+                    marker = "[OK]  "
+                elif "LsiLogic" in ctype or "BusLogic" in ctype:
+                    marker = "[WARN]"
+                else:
+                    marker = "      "
+                print(f"      {marker} {c.get('label', '?'):<22}  "
+                      f"{ctype:<28}  bus={c.get('bus_number', '?')}  "
+                      f"sharing={c.get('sharing', 'noSharing')}  "
+                      f"disks={len(attached)}")
+                for d in sorted(attached,
+                                key=lambda x: x.get("unit_number", 0) or 0):
+                    prov = d.get("provisioning", "?")
+                    prov_marker = ("[OK]  " if prov == "eagerzeroedthick"
+                                   else "[WARN]" if prov == "thick"
+                                   else "[FAIL]" if prov == "thin"
+                                   else "      ")
+                    size = round(d.get("capacity_gb", 0), 1)
+                    print(f"          {prov_marker} unit={d.get('unit_number', '?'):>2}  "
+                          f"{d.get('label', '?'):<14}  "
+                          f"{size:>8} GB  {prov:<18}  "
+                          f"mode={d.get('disk_mode', '')}")
+
+    print()
+    print("=" * 110)
+    print(f"  Legend: [OK]=ParaVirtual/NVMe or eagerzeroedthick  "
+          f"[WARN]=LsiLogic or thick  [FAIL]=thin")
+    print("=" * 110)
+    print()
 
 
 # ── Main ──
@@ -534,6 +822,9 @@ def main():
         "hosts":      hosts,
     }
 
+    # ── Show what we collected on the console ──
+    _print_console_summary(data)
+
     out_dir = os.path.abspath(args.output_dir)
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.join(out_dir, f"vminfo_{timestamp}")
@@ -542,7 +833,6 @@ def main():
     xlsx_path = base + ".xlsx"
     zip_path  = base + ".zip"
 
-    print()
     print(f"  Generating report bundle (JSON + Excel + PDF)...")
     _write_json(data, json_path)
     _write_excel(data, xlsx_path)
